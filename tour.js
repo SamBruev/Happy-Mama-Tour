@@ -99,6 +99,9 @@ const TourAnimator = (function () {
     const to = this.route[leg.to];
     const duration = leg.durationMs || 3000;
     const start = performance.now();
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let frame = 0;
+    let lastPanAt = 0;
 
     this.emitUpdate({
       legIndex: legIdx,
@@ -127,7 +130,13 @@ const TourAnimator = (function () {
           this.traveledLine.setLatLngs(trail);
         }
 
-        this.map.panTo([lat, lon], { animate: true, duration: 0.35, easeLinearity: 0.25 });
+        frame += 1;
+        if (reduceMotion) {
+          if (raw >= 1) this.map.setView([lat, lon], this.map.getZoom(), { animate: false });
+        } else if (frame % 3 === 0 && now - lastPanAt > 180) {
+          this.map.panTo([lat, lon], { animate: true, duration: 0.35, easeLinearity: 0.25 });
+          lastPanAt = now;
+        }
 
         this.emitUpdate({
           legIndex: legIdx,

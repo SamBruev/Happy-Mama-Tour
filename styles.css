@@ -45,10 +45,12 @@ body {
   font-family: var(--font-body);
   color: var(--text);
   line-height: 1.55;
+  font-size: 1rem;
   min-height: 100dvh;
   background: transparent;
   -webkit-font-smoothing: antialiased;
   padding-bottom: calc(var(--nav-h) + var(--safe-bottom) + 12px);
+  touch-action: manipulation;
 }
 
 body::before {
@@ -66,7 +68,7 @@ body::before {
     ),
     radial-gradient(ellipse 120% 55% at 50% -15%, rgba(200, 217, 240, 0.22) 0%, transparent 58%),
     radial-gradient(ellipse 90% 40% at 85% 10%, rgba(180, 200, 230, 0.12) 0%, transparent 50%),
-    url("media/karelia-bg.jpg") center center / cover no-repeat;
+    url("media/karelia-bg-sm.jpg") center center / cover no-repeat;
   transform: scale(calc(1 + var(--app-bg-scroll) * 0.04));
   transition: transform 0.2s ease;
 }
@@ -82,7 +84,7 @@ body::before {
       ),
       radial-gradient(ellipse 120% 55% at 50% -15%, rgba(200, 217, 240, 0.22) 0%, transparent 58%),
       radial-gradient(ellipse 90% 40% at 85% 10%, rgba(180, 200, 230, 0.12) 0%, transparent 50%),
-      url("media/karelia-bg.jpg") center center / cover no-repeat fixed;
+      url("media/karelia-bg-sm.jpg") center center / cover no-repeat fixed;
   }
 }
 
@@ -470,13 +472,22 @@ body::after {
   background: rgba(15, 40, 71, 0.55);
   color: var(--cream);
   border-radius: 999px;
-  padding: 7px 14px;
-  font-size: 0.72rem;
+  padding: 10px 16px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78rem;
   font-weight: 700;
   font-family: inherit;
   text-decoration: none;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
   transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-link:focus-visible {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 2px;
 }
 
 .btn-link:active {
@@ -651,18 +662,26 @@ body::after {
   background: transparent;
   color: var(--muted);
   font-family: inherit;
-  font-size: 0.58rem;
+  font-size: 0.62rem;
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 4px;
+  min-height: 44px;
   padding: 6px 2px;
   border-radius: 14px;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
   transition: color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.nav-btn:focus-visible {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 1px;
 }
 
 .nav-btn.active {
@@ -869,11 +888,51 @@ body::after {
   transform: scale(0.96);
 }
 
+.tour-btn:focus-visible {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 2px;
+}
+
 .tour-btn-primary {
   flex: 1;
   background: linear-gradient(135deg, rgba(201, 162, 39, 0.45), rgba(42, 90, 138, 0.55));
   border-color: rgba(201, 162, 39, 0.55);
   font-weight: 800;
+}
+
+.map-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: 24px 20px;
+  text-align: center;
+  font-size: 0.92rem;
+  color: var(--label);
+  background: rgba(15, 40, 71, 0.55);
+  border-radius: 20px;
+  border: 1px solid var(--glass-border);
+}
+
+.map-status--error {
+  color: #f0c4d0;
+  border-color: rgba(107, 45, 62, 0.5);
+}
+
+@media (max-width: 480px) {
+  .card {
+    -webkit-backdrop-filter: blur(12px) saturate(130%);
+    backdrop-filter: blur(12px) saturate(130%);
+  }
+
+  .bottom-nav {
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+  }
+
+  .tour-map {
+    height: min(42vh, 320px);
+  }
 }
 
 .tour-stops {
@@ -882,6 +941,8 @@ body::after {
   padding: 8px 0;
   max-height: 38vh;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   position: relative;
   z-index: 1;
 }

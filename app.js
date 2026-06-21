@@ -11,6 +11,15 @@ const STORAGE_KEY = "happy-mama-tour-checks-v2";
 let mapInstance = null;
 let tourAnimator = null;
 let activePanel = "plan";
+let leafletLoadPromise = null;
+let mapInitStarted = false;
+
+const LEAFLET_CSS =
+  "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+const LEAFLET_JS =
+  "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+const LEAFLET_CSS_INTEGRITY = "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=";
+const LEAFLET_JS_INTEGRITY = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
 
 function fmtDate(iso) {
   const d = new Date(iso + "T12:00:00");
@@ -246,28 +255,102 @@ function renderChecks() {
     .join("");
 }
 
+function showMapStatus(mapEl, message, isError) {
+  mapEl.innerHTML = `<p class="map-status${isError ? " map-status--error" : ""}">${message}</p>`;
+}
+
+function loadStylesheet(href, integrity) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`link[href="${href}"]`)) {
+      resolve();
+      return;
+    }
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    if (integrity) {
+      link.integrity = integrity;
+      link.crossOrigin = "";
+    }
+    link.onload = () => resolve();
+    link.onerror = () => reject(new Error("stylesheet"));
+    document.head.appendChild(link);
+  });
+}
+
+function loadScript(src, integrity) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = src;
+    if (integrity) {
+      script.integrity = integrity;
+      script.crossOrigin = "";
+    }
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("script"));
+    document.body.appendChild(script);
+  });
+}
+
+function loadLeaflet() {
+  if (typeof L !== "undefined") return Promise.resolve();
+  if (leafletLoadPromise) return leafletLoadPromise;
+  leafletLoadPromise = loadStylesheet(LEAFLET_CSS, LEAFLET_CSS_INTEGRITY)
+    .then(() => loadScript(LEAFLET_JS, LEAFLET_JS_INTEGRITY))
+    .catch(() => {
+      leafletLoadPromise = null;
+      throw new Error("leaflet");
+    });
+  return leafletLoadPromise;
+}
+
 function initMap() {
-  if (typeof L === "undefined") return;
   const mapEl = document.getElementById("map");
-  if (!mapEl) return;
-
-  if (!mapInstance) {
-    mapInstance = L.map("map", { zoomControl: false }).setView([59.5, 32], 6);
-
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-      attribution: "&copy; OSM &copy; CARTO",
-      subdomains: "abcd",
-      maxZoom: 19,
-    }).addTo(mapInstance);
-
-    L.control.zoom({ position: "bottomright" }).addTo(mapInstance);
+  if (!mapEl || mapEl.dataset.state === "error") return;
+  if (mapInitStarted && mapInstance) {
+    setTimeout(() => mapInstance.invalidateSize(), 120);
+    return;
   }
 
-  if (!tourAnimator && typeof initTourAnimation === "function") {
-    tourAnimator = initTourAnimation(mapInstance);
-  }
+  mapInitStarted = true;
+  showMapStatus(mapEl, "Загрузка карты…");
 
-  setTimeout(() => mapInstance.invalidateSize(), 200);
+  loadLeaflet()
+    .then(() => {
+      if (typeof L === "undefined") throw new Error("leaflet");
+      mapEl.innerHTML = "";
+      mapEl.dataset.state = "ready";
+
+      if (!mapInstance) {
+        mapInstance = L.map("map", { zoomControl: false }).setView([59.5, 32], 6);
+
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+          attribution: "&copy; OSM &copy; CARTO",
+          subdomains: "abcd",
+          maxZoom: 19,
+        }).addTo(mapInstance);
+
+        L.control.zoom({ position: "bottomright" }).addTo(mapInstance);
+      }
+
+      if (!tourAnimator && typeof initTourAnimation === "function") {
+        tourAnimator = initTourAnimation(mapInstance);
+      }
+
+      setTimeout(() => mapInstance.invalidateSize(), 200);
+    })
+    .catch(() => {
+      mapEl.dataset.state = "error";
+      showMapStatus(
+        mapEl,
+        "Карта не загрузилась. Проверьте интернет и обновите страницу.",
+        true,
+      );
+    });
 }
 
 function bindChecks() {
@@ -297,6 +380,7 @@ function bindNav() {
 }
 
 function bindScrollGlass() {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   let ticking = false;
   window.addEventListener(
     "scroll",
@@ -329,6 +413,13 @@ function bindReveal() {
   document.querySelectorAll(".reveal").forEach((el) => obs.observe(el));
 }
 
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator) || location.protocol === "file:") return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}
+
 function init() {
   renderHero();
   renderHub();
@@ -340,6 +431,7 @@ function init() {
   bindChecks();
   bindScrollGlass();
   bindReveal();
+  registerServiceWorker();
   requestAnimationFrame(() => document.querySelectorAll(".reveal:not(.visible)").forEach((el) => {
     const r = el.getBoundingClientRect();
     if (r.top < window.innerHeight) el.classList.add("visible");
