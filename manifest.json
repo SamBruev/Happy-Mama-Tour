@@ -1,0 +1,11 @@
+{
+  "name": "Happy Mama Tour",
+  "short_name": "Mama Tour",
+  "description": "Поездка с мамой в Санкт-Петербург · 3–10 августа",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f2847",
+  "theme_color": "#0f2847",
+  "lang": "ru",
+  "orientation": "portrait"
+}

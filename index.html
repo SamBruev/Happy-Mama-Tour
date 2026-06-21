@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0f2847">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Happy Mama Tour">
+  <meta name="description" content="Happy Mama Tour — поездка с мамой в Петербург, 3–10 августа">
+  <link rel="manifest" href="manifest.json">
+  <title>Happy Mama Tour</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero" id="hero"></header>
+    <div id="hub"></div>
+
+    <section class="panel active" data-panel="plan">
+      <p class="section-head">Расписание по дням</p>
+      <div id="plan-days"></div>
+      <div class="tip-callout">3 августа: 746У «Аврора» из Москвы в 17:45 → приезд на Московский вокзал в 23:05 → каршеринг до отеля.</div>
+    </section>
+
+    <section class="panel" data-panel="stay">
+      <p class="section-head">Отель</p>
+      <div class="card card-glass reveal" id="hotel-block"></div>
+      <p class="section-head">Билеты на поезд</p>
+      <div class="card card-glass reveal" id="tickets-block"></div>
+    </section>
+
+    <section class="panel" data-panel="map">
+      <p class="section-head">Путешествие по туру</p>
+      <div class="card card-glass tour-player reveal">
+        <div class="tour-now">
+          <p class="tour-leg-label" id="tour-leg-label">Нажмите ▶ — поедем из Москвы</p>
+          <p class="tour-leg-transport" id="tour-leg-transport"></p>
+        </div>
+        <div class="tour-progress-wrap">
+          <div class="tour-progress-track">
+            <div class="tour-progress-bar" id="tour-progress-bar"></div>
+          </div>
+          <span class="tour-progress-text" id="tour-progress-text">Этап 0 из 15</span>
+        </div>
+        <div class="tour-controls">
+          <button type="button" class="tour-btn tour-btn-primary" id="tour-play" aria-label="Старт">▶</button>
+          <button type="button" class="tour-btn" id="tour-reset" aria-label="Сначала">↺</button>
+        </div>
+      </div>
+      <div id="map" class="reveal tour-map"></div>
+      <ol class="tour-stops card card-glass reveal" id="tour-stops"></ol>
+    </section>
+
+    <section class="panel" data-panel="budget">
+      <p class="section-head">Бюджет поездки</p>
+      <div class="card card-glass reveal">
+        <div id="budget-rows"></div>
+        <div class="budget-total">
+          <div class="section-head" style="margin-bottom:4px">Итого ориентир</div>
+          <div class="budget-total-val" id="budget-total-val">—</div>
+        </div>
+      </div>
+      <div class="tip-callout">Суммы с пометкой «←» и нули — заполните в файле <code>data.js</code> после покупки билетов и брони.</div>
+    </section>
+
+    <section class="panel" id="checks-panel" data-panel="see">
+      <p class="section-head">Обязательно посмотреть</p>
+      <div class="card card-glass reveal" id="must-see"></div>
+      <p class="section-head">Не забыть взять</p>
+      <div class="card card-glass reveal" id="packing"></div>
+    </section>
+  </div>
+
+  <nav class="bottom-nav" aria-label="Навигация">
+    <button class="nav-btn active" type="button" data-nav="plan">
+      <span class="nav-icon">☀</span>
+      План
+    </button>
+    <button class="nav-btn" type="button" data-nav="stay">
+      <span class="nav-icon">⌂</span>
+      Отель
+    </button>
+    <button class="nav-btn" type="button" data-nav="map">
+      <span class="nav-icon">↝</span>
+      Тур
+    </button>
+    <button class="nav-btn" type="button" data-nav="budget">
+      <span class="nav-icon">₽</span>
+      Бюджет
+    </button>
+    <button class="nav-btn" type="button" data-nav="see">
+      <span class="nav-icon">✓</span>
+      Смотреть
+    </button>
+  </nav>
+
+  <script src="data.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="tour.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
