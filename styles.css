@@ -24,6 +24,7 @@
   --nav-h: 72px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
+  --swipe-delete-w: 96px;
   accent-color: var(--gold);
 }
 
@@ -1777,5 +1778,348 @@ body::after {
 
   .tour-stop-progress {
     transition: none;
+  }
+
+  .spb-swipe-overlay,
+  .spb-swipe-wave,
+  .spb-swipe-gold,
+  .spb-swipe-spire,
+  .panel.spb-exit,
+  .panel.spb-enter {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .spb-swipe-overlay.is-active {
+    opacity: 1;
+  }
+
+  .swipe-row,
+  .swipe-row__surface {
+    transition: none !important;
+  }
+}
+
+/* Свайп влево по пункту — удаление */
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+  max-height: 900px;
+  transition:
+    opacity 0.42s ease,
+    max-height 0.42s ease,
+    margin 0.42s ease;
+}
+
+.swipe-row--hide {
+  opacity: 0;
+  max-height: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  pointer-events: none;
+}
+
+.swipe-row--day {
+  margin-bottom: 14px;
+  border-radius: 20px;
+}
+
+.swipe-row--step + .swipe-row--step {
+  margin-top: 0;
+}
+
+.swipe-row--ticket + .swipe-row--ticket .ticket-card {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.swipe-row__surface {
+  position: relative;
+  z-index: 1;
+  touch-action: pan-y;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.swipe-row.is-open .swipe-row__surface {
+  transform: translateX(calc(-1 * var(--swipe-delete-w)));
+}
+
+.swipe-row--task .swipe-row__surface,
+.swipe-row--visit .swipe-row__surface,
+.swipe-row--budget .swipe-row__surface {
+  background: rgba(12, 28, 50, 0.98);
+}
+
+.swipe-row--step .swipe-row__surface {
+  background: rgba(12, 28, 50, 0.96);
+}
+
+.swipe-row--day .swipe-row__surface {
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.swipe-row--day .day-card {
+  margin-bottom: 0;
+}
+
+.swipe-row--ticket .swipe-row__surface,
+.swipe-row--hotel .swipe-row__surface {
+  background: rgba(12, 28, 50, 0.98);
+}
+
+.swipe-row--visit .visit-item {
+  border-bottom: none;
+}
+
+.swipe-row--budget .budget-row {
+  border-bottom: none;
+}
+
+.swipe-row--task .task-item {
+  border-bottom: none;
+}
+
+.swipe-row__delete {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--swipe-delete-w);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: none;
+  background: linear-gradient(180deg, #e8485c 0%, #b82034 100%);
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.swipe-row__delete:active {
+  background: linear-gradient(180deg, #ff5a6e 0%, #c4283c 100%);
+}
+
+.todo-summary-delete {
+  color: #ff6b82;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Свайп с правого края — переход в стиле Петербурга */
+.spb-swipe-overlay {
+  --swipe-progress: 0;
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.35s ease, visibility 0s linear 0.45s;
+}
+
+.spb-swipe-overlay.is-tracking {
+  visibility: visible;
+  opacity: calc(var(--swipe-progress) * 0.72);
+  transition: opacity 0.08s linear;
+}
+
+.spb-swipe-overlay.is-active {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.22s ease, visibility 0s;
+}
+
+.spb-swipe-overlay.is-leaving {
+  opacity: 0;
+  transition: opacity 0.42s ease 0.08s, visibility 0s linear 0.52s;
+}
+
+.spb-swipe-overlay__sky {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 90% 45% at 50% 0%, rgba(232, 240, 250, 0.38) 0%, transparent 58%),
+    linear-gradient(180deg, rgba(42, 90, 138, 0.55) 0%, rgba(15, 40, 71, 0.94) 52%, rgba(8, 20, 36, 0.98) 100%);
+}
+
+.spb-swipe-wave {
+  position: absolute;
+  left: -8%;
+  width: 116%;
+  height: 38%;
+  border-radius: 50% 50% 0 0 / 18% 18% 0 0;
+  opacity: 0;
+}
+
+.spb-swipe-overlay.is-active .spb-swipe-wave,
+.spb-swipe-overlay.is-tracking .spb-swipe-wave {
+  opacity: 1;
+}
+
+.spb-swipe-wave--1 {
+  bottom: 8%;
+  background: linear-gradient(180deg, rgba(74, 122, 176, 0.35) 0%, rgba(26, 61, 102, 0.88) 100%);
+  animation: spbWaveIn 0.72s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.spb-swipe-wave--2 {
+  bottom: 4%;
+  background: linear-gradient(180deg, rgba(42, 90, 138, 0.45) 0%, rgba(15, 40, 71, 0.92) 100%);
+  animation: spbWaveIn 0.82s cubic-bezier(0.22, 1, 0.36, 1) 0.06s both;
+}
+
+.spb-swipe-wave--3 {
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(15, 40, 71, 0.6) 0%, rgba(8, 24, 40, 0.98) 100%);
+  animation: spbWaveIn 0.92s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both;
+}
+
+.spb-swipe-gold {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 36%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold-bright), transparent);
+  box-shadow: 0 0 28px rgba(232, 197, 71, 0.55);
+  opacity: 0;
+  transform: scaleX(0.2);
+}
+
+.spb-swipe-overlay.is-active .spb-swipe-gold {
+  animation: spbGoldHorizon 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.18s both;
+}
+
+.spb-swipe-spire {
+  position: absolute;
+  left: 50%;
+  bottom: 37%;
+  width: 0;
+  height: 0;
+  border-left: 14px solid transparent;
+  border-right: 14px solid transparent;
+  border-bottom: 52px solid rgba(201, 162, 39, 0.92);
+  filter: drop-shadow(0 0 18px rgba(232, 197, 71, 0.45));
+  transform: translateX(-50%) translateY(12px);
+  opacity: 0;
+}
+
+.spb-swipe-overlay.is-active .spb-swipe-spire {
+  animation: spbSpireRise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.22s both;
+}
+
+.spb-swipe-spire::after {
+  content: "";
+  position: absolute;
+  left: -3px;
+  top: -10px;
+  width: 6px;
+  height: 10px;
+  background: var(--gold-bright);
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+}
+
+.spb-swipe-label {
+  position: absolute;
+  left: 50%;
+  bottom: 22%;
+  transform: translateX(-50%);
+  font-family: var(--font-display);
+  font-size: clamp(1.15rem, 4.5vw, 1.45rem);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--white-night-soft);
+  text-shadow: 0 2px 24px rgba(15, 40, 71, 0.8);
+  white-space: nowrap;
+  opacity: 0;
+}
+
+.spb-swipe-overlay.is-active .spb-swipe-label,
+.spb-swipe-overlay.is-tracking .spb-swipe-label {
+  opacity: 1;
+}
+
+.spb-swipe-overlay.is-active .spb-swipe-label {
+  animation: spbLabelIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.28s both;
+}
+
+.panel.spb-exit {
+  animation: spbPanelExit 0.38s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.panel.spb-enter.active {
+  animation: spbPanelEnter 0.48s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both;
+}
+
+@keyframes spbWaveIn {
+  from {
+    transform: translateX(105%) translateY(18px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0) translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes spbGoldHorizon {
+  from {
+    opacity: 0;
+    transform: scaleX(0.15);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes spbSpireRise {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes spbLabelIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes spbPanelExit {
+  to {
+    opacity: 0;
+    transform: translateX(-16%) scale(0.985);
+    filter: blur(3px);
+  }
+}
+
+@keyframes spbPanelEnter {
+  from {
+    opacity: 0;
+    transform: translateX(20%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
 }

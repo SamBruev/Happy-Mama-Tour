@@ -8,11 +8,31 @@ const TRANSPORT_LABEL = {
 };
 
 const STORAGE_KEY = "happy-mama-tour-checks-v2";
+const HIDDEN_KEY = "happy-mama-tour-hidden-v1";
+const PANEL_ORDER = ["plan", "stay", "map", "budget", "todo"];
+const PANEL_TITLES = {
+  plan: "План",
+  stay: "Отель",
+  map: "Тур",
+  budget: "Бюджет",
+  todo: "Дела",
+};
+const EDGE_SWIPE_ZONE = 36;
+const EDGE_SWIPE_MIN = 64;
+
 let mapInstance = null;
 let tourAnimator = null;
 let activePanel = "plan";
 let leafletLoadPromise = null;
 let mapInitStarted = false;
+let revealObserver = null;
+let swipeBusy = false;
+let edgeTouch = null;
+let swipeRowTouch = null;
+let openSwipeRow = null;
+
+const SWIPE_DELETE_W = 96;
+const SWIPE_DELETE_OPEN = 52;
 
 const LEAFLET_CSS =
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
@@ -59,6 +79,73 @@ function saveChecks(data) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
+function loadHidden() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveHidden(set) {
+  localStorage.setItem(HIDDEN_KEY, JSON.stringify([...set]));
+}
+
+function isHidden(key) {
+  return loadHidden().has(key);
+}
+
+function hideItem(key) {
+  const hidden = loadHidden();
+  hidden.add(key);
+  saveHidden(hidden);
+}
+
+function wrapSwipeRow(key, innerHtml, extraClass = "") {
+  return `
+    <div class="swipe-row${extraClass ? ` ${extraClass}` : ""}" data-hide-key="${key}">
+      <div class="swipe-row__surface">${innerHtml}</div>
+      <button type="button" class="swipe-row__delete" aria-label="Удалить пункт">УДАЛИТЬ</button>
+    </div>
+  `;
+}
+
+function closeSwipeRow(row) {
+  if (!row) return;
+  row.classList.remove("is-open");
+  row.querySelector(".swipe-row__surface")?.style.removeProperty("transform");
+  if (openSwipeRow === row) openSwipeRow = null;
+}
+
+function refreshAfterDelete() {
+  renderHero();
+  renderHub();
+  renderPlan();
+  renderTicketsAndHotel();
+  renderBudget();
+  renderTodoPanel();
+  observeReveals();
+  updateTodoBadges();
+}
+
+function removeSwipeRow(row, key) {
+  hideItem(key);
+  closeSwipeRow(row);
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    refreshAfterDelete();
+    return;
+  }
+  row.classList.add("swipe-row--hide");
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    refreshAfterDelete();
+  };
+  row.addEventListener("transitionend", finish, { once: true });
+  window.setTimeout(finish, 520);
+}
+
 function isTicketBought(id) {
   return !!loadChecks()[`ticket-${id}`];
 }
@@ -82,16 +169,19 @@ function collectDoItems() {
   const h = TRIP.hotel;
 
   if (h.name?.includes("←") || h.bookingRef?.includes("←")) {
-    items.push({
-      id: "hotel-book",
-      storage: "todo",
-      text: "Забронировать отель",
-      detail: `7 ночей · заезд ${fmtDate(h.checkIn)}${h.lateCheckIn ? " · поздний ~00:30" : ""}`,
-      urgent: true,
-    });
+    if (!isHidden("todo:hotel-book")) {
+      items.push({
+        id: "hotel-book",
+        storage: "todo",
+        text: "Забронировать отель",
+        detail: `7 ночей · заезд ${fmtDate(h.checkIn)}${h.lateCheckIn ? " · поздний ~00:30" : ""}`,
+        urgent: true,
+      });
+    }
   }
 
   TRIP.tickets.forEach((t) => {
+    if (isHidden(`ticket:${t.id}`)) return;
     items.push({
       id: t.id,
       storage: "ticket",
@@ -104,7 +194,9 @@ function collectDoItems() {
   });
 
   TRIP.days.forEach((day) => {
+    if (isHidden(`day:${day.id}`)) return;
     day.steps.forEach((step, si) => {
+      if (isHidden(`step:${day.id}:${si}`)) return;
       if (!step.link) return;
       items.push({
         id: step.ticketId || `${day.id}-s${si}`,
@@ -119,6 +211,7 @@ function collectDoItems() {
   });
 
   (TRIP.todos || []).forEach((t) => {
+    if (isHidden(`todo:${t.id}`)) return;
     items.push({
       ...t,
       storage: "todo",
@@ -134,7 +227,7 @@ function countPendingDo() {
 }
 
 function countPendingPrepare() {
-  return TRIP.packing.filter((item) => !isPrepareDone(item)).length;
+  return TRIP.packing.filter((item) => !isHidden(`pack:${item.id}`) && !isPrepareDone(item)).length;
 }
 
 function dismissTaskRow(row) {
@@ -155,7 +248,11 @@ function updateTodoBadges() {
 function renderDoItem(item) {
   const done = isDoItemDone(item);
   if (done) return "";
-  return `
+  const key = item.storage === "ticket" ? `ticket:${item.id}` : `todo:${item.id}`;
+  if (isHidden(key)) return "";
+  return wrapSwipeRow(
+    key,
+    `
     <div class="task-item task-item--urgent" data-task-wrap="${item.id}">
       <label class="task-check">
         <input type="checkbox" data-do-id="${item.id}" data-do-storage="${item.storage}" aria-label="Готово: ${item.text}">
@@ -166,25 +263,34 @@ function renderDoItem(item) {
       </div>
       ${item.link ? `<a class="btn-link btn-link-urgent task-link" href="${item.link}" target="_blank" rel="noopener">${item.linkLabel || "Открыть"}</a>` : ""}
     </div>
-  `;
+  `,
+    "swipe-row--task",
+  );
 }
 
 function renderPrepareItem(item) {
+  if (isHidden(`pack:${item.id}`)) return "";
   const done = isPrepareDone(item);
-  return `
+  return wrapSwipeRow(
+    `pack:${item.id}`,
+    `
     <label class="task-item task-item--prepare${done ? " task-item--done" : ""}">
       <input type="checkbox" data-id="pack-${item.id}" ${done ? "checked" : ""} aria-label="${item.text}">
       <div class="task-body">
         <span class="task-title">${item.text}</span>
       </div>
     </label>
-  `;
+  `,
+    "swipe-row--task",
+  );
 }
 
 function sumStepCosts() {
   let total = 0;
   TRIP.days.forEach((day) => {
-    day.steps.forEach((step) => {
+    if (isHidden(`day:${day.id}`)) return;
+    day.steps.forEach((step, si) => {
+      if (isHidden(`step:${day.id}:${si}`)) return;
       if (typeof step.cost === "number") total += step.cost;
     });
   });
@@ -193,11 +299,15 @@ function sumStepCosts() {
 
 function sumBudget() {
   const fixed = TRIP.budgetFixed
-    .filter((b) => !["hotel", "train"].includes(b.id))
+    .filter((b) => !["hotel", "train"].includes(b.id) && !isHidden(`budget:${b.id}`))
     .reduce((s, i) => s + (i.amount || 0), 0);
-  const daily = sumStepCosts();
-  const tickets = TRIP.tickets.reduce((s, t) => s + (t.cost || 0), 0);
-  const hotel = (TRIP.hotel.costPerNight || 0) * (TRIP.hotel.nights || 0);
+  const daily = isHidden("budget:rollup:daily") ? 0 : sumStepCosts();
+  const tickets = isHidden("budget:rollup:trains")
+    ? 0
+    : TRIP.tickets.filter((t) => !isHidden(`ticket:${t.id}`)).reduce((s, t) => s + (t.cost || 0), 0);
+  const hotel = isHidden("budget:rollup:hotel") || isHidden("hotel:main")
+    ? 0
+    : (TRIP.hotel.costPerNight || 0) * (TRIP.hotel.nights || 0);
   return fixed + daily + tickets + hotel;
 }
 
@@ -267,52 +377,62 @@ function renderHub() {
   updateTodoBadges();
 }
 
+function renderPlanStep(day, step, si) {
+  const ticketId = step.link ? step.ticketId || `${day.id}-s${si}` : null;
+  const needsTicket = ticketId && !isTicketBought(ticketId);
+  return wrapSwipeRow(
+    `step:${day.id}:${si}`,
+    `
+      <div class="step${needsTicket ? " step--needs-ticket" : ""}" style="animation-delay:${si * 0.05}s">
+        <div class="step-head">
+          <span class="step-time">${step.time || "—"}</span>
+          <span class="step-title">${step.title}</span>
+          ${step.transport ? `<span class="step-transport" data-t="${step.transport}">${TRANSPORT_LABEL[step.transport] || step.transport}</span>` : ""}
+        </div>
+        ${step.detail ? `<p class="step-detail">${step.detail}</p>` : ""}
+        ${step.address ? `<p class="step-address">${step.address}</p>` : ""}
+        ${step.cost != null ? `<p class="step-cost">${fmtMoney(step.cost)}${step.costNote ? ` · ${step.costNote}` : ""}</p>` : ""}
+        ${
+          step.tips?.length
+            ? `<ul class="step-tips">${step.tips.map((t) => `<li>${t}</li>`).join("")}</ul>`
+            : ""
+        }
+        <div class="step-actions">
+          ${
+            step.lat != null
+              ? `<a class="btn-link" href="${yandexMap(step.lat, step.lon, step.title)}" target="_blank" rel="noopener">Карта</a>`
+              : ""
+          }
+          ${
+            step.link
+              ? `<a class="btn-link${needsTicket ? " btn-link-urgent" : ""}" href="${step.link}" target="_blank" rel="noopener">Билеты</a>`
+              : ""
+          }
+        </div>
+      </div>
+    `,
+    "swipe-row--step",
+  );
+}
+
 function renderPlan() {
   const container = document.getElementById("plan-days");
   const today = new Date().toISOString().slice(0, 10);
 
   container.innerHTML = TRIP.days
     .map((day, idx) => {
-      const open = day.date === today || idx === 0 ? " open" : "";
-      const steps = day.steps
-        .map(
-          (step, si) => {
-            const ticketId = step.link ? step.ticketId || `${day.id}-s${si}` : null;
-            const needsTicket = ticketId && !isTicketBought(ticketId);
-            return `
-        <div class="step${needsTicket ? " step--needs-ticket" : ""}" style="animation-delay:${si * 0.05}s">
-          <div class="step-head">
-            <span class="step-time">${step.time || "—"}</span>
-            <span class="step-title">${step.title}</span>
-            ${step.transport ? `<span class="step-transport" data-t="${step.transport}">${TRANSPORT_LABEL[step.transport] || step.transport}</span>` : ""}
-          </div>
-          ${step.detail ? `<p class="step-detail">${step.detail}</p>` : ""}
-          ${step.address ? `<p class="step-address">${step.address}</p>` : ""}
-          ${step.cost != null ? `<p class="step-cost">${fmtMoney(step.cost)}${step.costNote ? ` · ${step.costNote}` : ""}</p>` : ""}
-          ${
-            step.tips?.length
-              ? `<ul class="step-tips">${step.tips.map((t) => `<li>${t}</li>`).join("")}</ul>`
-              : ""
-          }
-          <div class="step-actions">
-            ${
-              step.lat != null
-                ? `<a class="btn-link" href="${yandexMap(step.lat, step.lon, step.title)}" target="_blank" rel="noopener">Карта</a>`
-                : ""
-            }
-            ${
-              step.link
-                ? `<a class="btn-link${needsTicket ? " btn-link-urgent" : ""}" href="${step.link}" target="_blank" rel="noopener">Билеты</a>`
-                : ""
-            }
-          </div>
-        </div>
-      `;
-          },
-        )
-        .join("");
+      if (isHidden(`day:${day.id}`)) return "";
+      const visibleSteps = day.steps
+        .map((step, si) => ({ step, si }))
+        .filter(({ si }) => !isHidden(`step:${day.id}:${si}`));
+      if (!visibleSteps.length) return "";
 
-      return `
+      const open = day.date === today || idx === 0 ? " open" : "";
+      const steps = visibleSteps.map(({ step, si }) => renderPlanStep(day, step, si)).join("");
+
+      return wrapSwipeRow(
+        `day:${day.id}`,
+        `
         <details class="card day-card reveal"${open}>
           <summary>
             <div class="day-date-badge" aria-hidden="true">
@@ -328,7 +448,9 @@ function renderPlan() {
             <div class="timeline">${steps}</div>
           </div>
         </details>
-      `;
+      `,
+        "swipe-row--day",
+      );
     })
     .join("");
 }
@@ -336,9 +458,12 @@ function renderPlan() {
 function renderTicketsAndHotel() {
   const ticketsEl = document.getElementById("tickets-block");
   ticketsEl.innerHTML = TRIP.tickets
+    .filter((t) => !isHidden(`ticket:${t.id}`))
     .map((t) => {
       const bought = isTicketBought(t.id);
-      return `
+      return wrapSwipeRow(
+        `ticket:${t.id}`,
+        `
     <div class="ticket-card${bought ? " ticket-card--bought" : " ticket-card--pending"}">
       <div class="ticket-route">${t.label}</div>
       <div class="ticket-meta">${t.weekday ? t.weekday + " · " : ""}${fmtDate(t.date)} · ${t.train}</div>
@@ -354,12 +479,21 @@ function renderTicketsAndHotel() {
         }
       </div>
     </div>
-  `;
+  `,
+        "swipe-row--ticket",
+      );
     })
     .join("");
 
   const h = TRIP.hotel;
-  document.getElementById("hotel-block").innerHTML = `
+  if (isHidden("hotel:main")) {
+    document.getElementById("hotel-block").innerHTML = "";
+    return;
+  }
+
+  document.getElementById("hotel-block").innerHTML = wrapSwipeRow(
+    "hotel:main",
+    `
     <div class="hotel-block">
       <div class="hotel-name">${h.name}</div>
       <div class="hotel-row"><b>Адрес:</b> ${h.address}</div>
@@ -373,31 +507,46 @@ function renderTicketsAndHotel() {
         <a class="btn-link" href="${yandexMap(h.lat, h.lon, h.name)}" target="_blank" rel="noopener">Яндекс.Карты</a>
       </div>
     </div>
-  `;
+  `,
+    "swipe-row--hotel",
+  );
 }
 
 function renderBudget() {
   const rows = document.getElementById("budget-rows");
-  const hotelTotal = TRIP.hotel.costPerNight * TRIP.hotel.nights;
-  const ticketTotal = TRIP.tickets.reduce((s, t) => s + (t.cost || 0), 0);
+  const hotelTotal = isHidden("hotel:main") ? 0 : TRIP.hotel.costPerNight * TRIP.hotel.nights;
+  const ticketTotal = TRIP.tickets
+    .filter((t) => !isHidden(`ticket:${t.id}`))
+    .reduce((s, t) => s + (t.cost || 0), 0);
   const dailyTotal = sumStepCosts();
 
   const items = [
-    { label: "Отель", amount: hotelTotal, note: `${TRIP.hotel.nights} ночей` },
-    { label: "Ж/д билеты", amount: ticketTotal, note: "туда + обратно" },
-    ...TRIP.budgetFixed.filter((b) => !["hotel", "train"].includes(b.id)),
-    { label: "По дням (транспорт, еда, входы)", amount: dailyTotal, note: "из расписания" },
-  ];
+    { key: "budget:rollup:hotel", label: "Отель", amount: hotelTotal, note: `${TRIP.hotel.nights} ночей` },
+    { key: "budget:rollup:trains", label: "Ж/д билеты", amount: ticketTotal, note: "туда + обратно" },
+    ...TRIP.budgetFixed
+      .filter((b) => !["hotel", "train"].includes(b.id))
+      .map((b) => ({ key: `budget:${b.id}`, ...b })),
+    {
+      key: "budget:rollup:daily",
+      label: "По дням (транспорт, еда, входы)",
+      amount: dailyTotal,
+      note: "из расписания",
+    },
+  ].filter((i) => !isHidden(i.key));
 
   rows.innerHTML = items
     .map(
-      (i) => `
+      (i) => wrapSwipeRow(
+        i.key,
+        `
     <div class="budget-row">
       <span>${i.label}</span>
       <span class="budget-amt">${fmtMoney(i.amount)}</span>
       ${i.note ? `<span class="budget-note">${i.note}</span>` : ""}
     </div>
   `,
+        "swipe-row--budget",
+      ),
     )
     .join("");
 
@@ -425,7 +574,7 @@ function renderTodoSummary() {
         <span class="todo-summary-lbl">подготовить</span>
       </div>
     </div>
-    <p class="todo-summary-hint">Отметьте галочкой — пункт исчезнет с анимацией</p>
+    <p class="todo-summary-hint">Галочка — готово · свайп влево — <span class="todo-summary-delete">удалить</span></p>
   `;
 }
 
@@ -464,10 +613,13 @@ function renderOfficialLinks(item) {
 function renderMustSee() {
   const checks = loadChecks();
   document.getElementById("must-see").innerHTML = TRIP.mustSee
+    .filter((item) => !isHidden(`must:${item.id}`))
     .map((item) => {
       const done = checks["must-" + item.id] || item.done;
       const links = renderOfficialLinks(item);
-      return `
+      return wrapSwipeRow(
+        `must:${item.id}`,
+        `
       <div class="visit-item${links ? " visit-item--has-links" : ""}">
         <label class="check-item${done ? " done" : ""}">
           <input type="checkbox" data-id="must-${item.id}" ${done ? "checked" : ""}>
@@ -476,7 +628,9 @@ function renderMustSee() {
         </label>
         ${links}
       </div>
-    `;
+    `,
+        "swipe-row--visit",
+      );
     })
     .join("");
 }
@@ -634,16 +788,271 @@ function bindTodoPanel() {
 function bindNav() {
   document.querySelectorAll(".nav-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      activePanel = btn.dataset.nav;
-      document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b === btn));
-      document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.dataset.panel === activePanel));
-      if (activePanel === "map") {
-        initMap();
-        setTimeout(() => mapInstance?.invalidateSize(), 120);
-      }
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      applyPanelSwitch(btn.dataset.nav, { scroll: "smooth" });
     });
   });
+}
+
+function getNextPanel(current) {
+  const idx = PANEL_ORDER.indexOf(current);
+  return PANEL_ORDER[(idx + 1) % PANEL_ORDER.length];
+}
+
+function refreshPanelsContent() {
+  renderHero();
+  renderHub();
+  renderPlan();
+  renderTicketsAndHotel();
+  renderBudget();
+  renderTodoPanel();
+  observeReveals();
+}
+
+function applyPanelSwitch(panelId, { scroll = "auto" } = {}) {
+  if (panelId === activePanel) return;
+  activePanel = panelId;
+  document.querySelectorAll(".nav-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.nav === activePanel);
+  });
+  document.querySelectorAll(".panel").forEach((p) => {
+    p.classList.toggle("active", p.dataset.panel === activePanel);
+  });
+  if (activePanel === "map") {
+    initMap();
+    setTimeout(() => mapInstance?.invalidateSize(), 120);
+  } else {
+    tourAnimator?.pause?.();
+  }
+  window.scrollTo({ top: 0, behavior: scroll });
+}
+
+function playSpbSwipeTransition(nextPanel) {
+  if (swipeBusy) return;
+  swipeBusy = true;
+
+  const overlay = document.getElementById("spb-swipe-overlay");
+  const label = overlay?.querySelector(".spb-swipe-label");
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  if (label) label.textContent = PANEL_TITLES[nextPanel] || nextPanel;
+
+  if (reduced || !overlay) {
+    refreshPanelsContent();
+    applyPanelSwitch(nextPanel);
+    swipeBusy = false;
+    return;
+  }
+
+  const leavingPanel = document.querySelector(`.panel[data-panel="${activePanel}"]`);
+
+  overlay.classList.remove("is-leaving", "is-tracking");
+  overlay.style.removeProperty("--swipe-progress");
+  overlay.classList.add("is-active");
+  overlay.setAttribute("aria-hidden", "false");
+
+  if (navigator.vibrate) navigator.vibrate(10);
+
+  window.setTimeout(() => {
+    refreshPanelsContent();
+    if (leavingPanel) {
+      leavingPanel.classList.remove("active", "spb-enter");
+      leavingPanel.classList.add("spb-exit");
+    }
+
+    window.setTimeout(() => {
+      applyPanelSwitch(nextPanel);
+      document.querySelectorAll(".panel").forEach((p) => p.classList.remove("spb-exit"));
+      const enteringPanel = document.querySelector(`.panel[data-panel="${nextPanel}"]`);
+      if (enteringPanel) enteringPanel.classList.add("spb-enter");
+
+      overlay.classList.add("is-leaving");
+
+      window.setTimeout(() => {
+        overlay.classList.remove("is-active", "is-leaving");
+        overlay.setAttribute("aria-hidden", "true");
+        if (enteringPanel) enteringPanel.classList.remove("spb-enter");
+        swipeBusy = false;
+      }, 480);
+    }, 260);
+  }, 300);
+}
+
+function bindEdgeSwipeNav() {
+  const overlay = document.getElementById("spb-swipe-overlay");
+
+  document.addEventListener(
+    "touchstart",
+    (e) => {
+      if (swipeBusy || e.touches.length !== 1) return;
+      if (e.target.closest(".swipe-row")) return;
+      const t = e.touches[0];
+      if (t.clientX < window.innerWidth - EDGE_SWIPE_ZONE) return;
+      if (e.target.closest("input, textarea, select, button, a, .leaflet-control")) return;
+      edgeTouch = { x: t.clientX, y: t.clientY, time: Date.now() };
+    },
+    { passive: true },
+  );
+
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!edgeTouch || swipeBusy || !overlay) return;
+      const t = e.touches[0];
+      const dx = t.clientX - edgeTouch.x;
+      if (dx > 8) {
+        edgeTouch = null;
+        overlay.classList.remove("is-tracking");
+        overlay.style.removeProperty("--swipe-progress");
+        return;
+      }
+      const progress = Math.min(1, Math.abs(dx) / EDGE_SWIPE_MIN);
+      if (progress < 0.06) return;
+      overlay.style.setProperty("--swipe-progress", String(progress));
+      if (!overlay.classList.contains("is-tracking")) {
+        overlay.classList.add("is-tracking");
+        const label = overlay.querySelector(".spb-swipe-label");
+        if (label) label.textContent = PANEL_TITLES[getNextPanel(activePanel)];
+      }
+    },
+    { passive: true },
+  );
+
+  const resetEdgeTouch = () => {
+    edgeTouch = null;
+    overlay?.classList.remove("is-tracking");
+    overlay?.style.removeProperty("--swipe-progress");
+  };
+
+  document.addEventListener(
+    "touchend",
+    (e) => {
+      if (!edgeTouch) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - edgeTouch.x;
+      const dy = t.clientY - edgeTouch.y;
+      const started = edgeTouch;
+      resetEdgeTouch();
+
+      if (dx > -EDGE_SWIPE_MIN) return;
+      if (Math.abs(dx) < Math.abs(dy) * 1.25) return;
+      if (Date.now() - started.time > 700) return;
+
+      playSpbSwipeTransition(getNextPanel(activePanel));
+    },
+    { passive: true },
+  );
+
+  document.addEventListener("touchcancel", resetEdgeTouch, { passive: true });
+}
+
+function bindSwipeDelete() {
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".swipe-row__delete");
+    if (btn) {
+      e.preventDefault();
+      const row = btn.closest(".swipe-row");
+      const key = row?.dataset.hideKey;
+      if (row && key) removeSwipeRow(row, key);
+      return;
+    }
+    if (!e.target.closest(".swipe-row") && openSwipeRow) closeSwipeRow(openSwipeRow);
+  });
+
+  document.addEventListener(
+    "touchstart",
+    (e) => {
+      if (e.touches.length !== 1) return;
+      const surface = e.target.closest(".swipe-row__surface");
+      if (!surface) return;
+      if (e.target.closest("a, button, input, .swipe-row__delete")) return;
+
+      const t = e.touches[0];
+      if (t.clientX > window.innerWidth - EDGE_SWIPE_ZONE) return;
+
+      const row = surface.closest(".swipe-row");
+      if (!row) return;
+
+      if (openSwipeRow && openSwipeRow !== row) closeSwipeRow(openSwipeRow);
+
+      swipeRowTouch = {
+        row,
+        surface,
+        startX: t.clientX,
+        startY: t.clientY,
+        baseX: row.classList.contains("is-open") ? -SWIPE_DELETE_W : 0,
+        moved: false,
+      };
+    },
+    { passive: true },
+  );
+
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!swipeRowTouch) return;
+      const t = e.touches[0];
+      const dx = t.clientX - swipeRowTouch.startX;
+      const dy = t.clientY - swipeRowTouch.startY;
+
+      if (!swipeRowTouch.moved && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 10) {
+        swipeRowTouch = null;
+        return;
+      }
+      if (Math.abs(dx) < 4) return;
+
+      swipeRowTouch.moved = true;
+      const x = Math.max(-SWIPE_DELETE_W, Math.min(0, swipeRowTouch.baseX + dx));
+      swipeRowTouch.surface.style.transform = `translateX(${x}px)`;
+      e.preventDefault();
+    },
+    { passive: false },
+  );
+
+  document.addEventListener(
+    "touchend",
+    (e) => {
+      if (!swipeRowTouch) return;
+      const { row, surface, startX, baseX, moved } = swipeRowTouch;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - startX;
+      swipeRowTouch = null;
+
+      if (!moved) return;
+
+      surface.style.removeProperty("transform");
+      const finalX = baseX + dx;
+
+      if (finalX <= -SWIPE_DELETE_OPEN) {
+        row.classList.add("is-open");
+        openSwipeRow = row;
+      } else {
+        closeSwipeRow(row);
+      }
+
+      const summary = surface.querySelector("summary");
+      if (summary) {
+        summary.addEventListener(
+          "click",
+          (ev) => {
+            ev.preventDefault();
+            ev.stopImmediatePropagation();
+          },
+          { capture: true, once: true },
+        );
+      }
+    },
+    { passive: true },
+  );
+
+  document.addEventListener(
+    "touchcancel",
+    () => {
+      if (!swipeRowTouch) return;
+      swipeRowTouch.surface.style.removeProperty("transform");
+      swipeRowTouch = null;
+    },
+    { passive: true },
+  );
 }
 
 function bindScrollGlass() {
@@ -665,19 +1074,25 @@ function bindScrollGlass() {
   );
 }
 
+function observeReveals() {
+  if (!revealObserver) {
+    revealObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.classList.add("visible");
+            revealObserver.unobserve(e.target);
+          }
+        });
+      },
+      { threshold: 0.12, rootMargin: "0px 0px -40px 0px" },
+    );
+  }
+  document.querySelectorAll(".reveal:not(.visible)").forEach((el) => revealObserver.observe(el));
+}
+
 function bindReveal() {
-  const obs = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((e) => {
-        if (e.isIntersecting) {
-          e.target.classList.add("visible");
-          obs.unobserve(e.target);
-        }
-      });
-    },
-    { threshold: 0.12, rootMargin: "0px 0px -40px 0px" },
-  );
-  document.querySelectorAll(".reveal").forEach((el) => obs.observe(el));
+  observeReveals();
 }
 
 function registerServiceWorker() {
@@ -695,6 +1110,8 @@ function init() {
   renderBudget();
   renderTodoPanel();
   bindNav();
+  bindEdgeSwipeNav();
+  bindSwipeDelete();
   bindTodoPanel();
   bindScrollGlass();
   bindReveal();
