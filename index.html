@@ -70,11 +70,14 @@
       <div class="tip-callout">Суммы с пометкой «←» и нули — заполните в файле <code>data.js</code> после покупки билетов и брони.</div>
     </section>
 
-    <section class="panel" id="checks-panel" data-panel="see">
-      <p class="section-head">Обязательно посмотреть</p>
+    <section class="panel" id="todo-panel" data-panel="todo">
+      <div class="card card-glass reveal todo-summary" id="todo-summary"></div>
+      <p class="section-head">Надо сделать</p>
+      <div class="card card-glass reveal" id="todo-do"></div>
+      <p class="section-head">Надо подготовить</p>
+      <div class="card card-glass reveal" id="todo-prepare"></div>
+      <p class="section-head">Куда идём</p>
       <div class="card card-glass reveal" id="must-see"></div>
-      <p class="section-head">Не забыть взять</p>
-      <div class="card card-glass reveal" id="packing"></div>
     </section>
   </div>
 
@@ -95,9 +98,9 @@
       <span class="nav-icon">₽</span>
       Бюджет
     </button>
-    <button class="nav-btn" type="button" data-nav="see">
-      <span class="nav-icon">✓</span>
-      Смотреть
+    <button class="nav-btn" type="button" data-nav="todo">
+      <span class="nav-icon">!</span>
+      Дела
     </button>
   </nav>
 

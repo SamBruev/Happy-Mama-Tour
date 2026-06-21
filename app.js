@@ -26,6 +26,16 @@ function fmtDate(iso) {
   return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
 }
 
+function fmtDayNum(iso) {
+  return new Date(iso + "T12:00:00").getDate();
+}
+
+function fmtMonthShort(iso) {
+  return new Date(iso + "T12:00:00")
+    .toLocaleDateString("ru-RU", { month: "short" })
+    .replace(".", "");
+}
+
 function fmtMoney(n) {
   if (n == null || Number.isNaN(n)) return "—";
   return new Intl.NumberFormat("ru-RU").format(Math.round(n)) + " ₽";
@@ -47,6 +57,128 @@ function loadChecks() {
 
 function saveChecks(data) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+function isTicketBought(id) {
+  return !!loadChecks()[`ticket-${id}`];
+}
+
+function isTodoDone(id) {
+  return !!loadChecks()[`todo-${id}`];
+}
+
+function isDoItemDone(item) {
+  if (item.storage === "ticket") return isTicketBought(item.id);
+  return isTodoDone(item.id) || item.done;
+}
+
+function isPrepareDone(item) {
+  const checks = loadChecks();
+  return checks[`pack-${item.id}`] || item.done;
+}
+
+function collectDoItems() {
+  const items = [];
+  const h = TRIP.hotel;
+
+  if (h.name?.includes("←") || h.bookingRef?.includes("←")) {
+    items.push({
+      id: "hotel-book",
+      storage: "todo",
+      text: "Забронировать отель",
+      detail: `7 ночей · заезд ${fmtDate(h.checkIn)}${h.lateCheckIn ? " · поздний ~00:30" : ""}`,
+      urgent: true,
+    });
+  }
+
+  TRIP.tickets.forEach((t) => {
+    items.push({
+      id: t.id,
+      storage: "ticket",
+      text: t.label,
+      detail: `${fmtDate(t.date)} · ${t.train} · ${t.depart}`,
+      link: t.link,
+      linkLabel: "РЖД",
+      urgent: true,
+    });
+  });
+
+  TRIP.days.forEach((day) => {
+    day.steps.forEach((step, si) => {
+      if (!step.link) return;
+      items.push({
+        id: step.ticketId || `${day.id}-s${si}`,
+        storage: "ticket",
+        text: step.ticketNote || step.title,
+        detail: `${fmtDayNum(day.date)} ${fmtMonthShort(day.date)} · ${step.time || "—"}`,
+        link: step.link,
+        linkLabel: "Билеты",
+        urgent: true,
+      });
+    });
+  });
+
+  (TRIP.todos || []).forEach((t) => {
+    items.push({
+      ...t,
+      storage: "todo",
+      urgent: t.urgent !== false,
+    });
+  });
+
+  return items;
+}
+
+function countPendingDo() {
+  return collectDoItems().filter((item) => !isDoItemDone(item)).length;
+}
+
+function countPendingPrepare() {
+  return TRIP.packing.filter((item) => !isPrepareDone(item)).length;
+}
+
+function dismissTaskRow(row) {
+  if (!row) return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    row.remove();
+    return;
+  }
+  row.classList.add("task-item--hide");
+  row.addEventListener("transitionend", () => row.remove(), { once: true });
+}
+
+function updateTodoBadges() {
+  const pending = countPendingDo() + countPendingPrepare();
+  document.querySelector('[data-nav="todo"]')?.classList.toggle("nav-btn--alert", pending > 0);
+}
+
+function renderDoItem(item) {
+  const done = isDoItemDone(item);
+  if (done) return "";
+  return `
+    <div class="task-item task-item--urgent" data-task-wrap="${item.id}">
+      <label class="task-check">
+        <input type="checkbox" data-do-id="${item.id}" data-do-storage="${item.storage}" aria-label="Готово: ${item.text}">
+      </label>
+      <div class="task-body">
+        <span class="task-title">${item.text}</span>
+        ${item.detail ? `<span class="task-detail">${item.detail}</span>` : ""}
+      </div>
+      ${item.link ? `<a class="btn-link btn-link-urgent task-link" href="${item.link}" target="_blank" rel="noopener">${item.linkLabel || "Открыть"}</a>` : ""}
+    </div>
+  `;
+}
+
+function renderPrepareItem(item) {
+  const done = isPrepareDone(item);
+  return `
+    <label class="task-item task-item--prepare${done ? " task-item--done" : ""}">
+      <input type="checkbox" data-id="pack-${item.id}" ${done ? "checked" : ""} aria-label="${item.text}">
+      <div class="task-body">
+        <span class="task-title">${item.text}</span>
+      </div>
+    </label>
+  `;
 }
 
 function sumStepCosts() {
@@ -86,7 +218,31 @@ function renderHero() {
 
 function renderHub() {
   const total = displayBudget();
+  const doLeft = countPendingDo();
+  const prepLeft = countPendingPrepare();
+  const todoBanner =
+    doLeft + prepLeft > 0
+      ? `
+    <button type="button" class="todo-hub card card-glass reveal" id="todo-hub-btn">
+      <div class="todo-hub-grid">
+        <div class="todo-hub-cell${doLeft ? " todo-hub-cell--urgent" : ""}">
+          <span class="todo-hub-num">${doLeft}</span>
+          <span class="todo-hub-lbl">сделать</span>
+        </div>
+        <div class="todo-hub-cell">
+          <span class="todo-hub-num">${prepLeft}</span>
+          <span class="todo-hub-lbl">подготовить</span>
+        </div>
+      </div>
+      <span class="todo-hub-cta">Открыть список дел →</span>
+    </button>`
+      : `
+    <div class="todo-hub card card-glass reveal todo-hub--done">
+      <span class="todo-hub-done">✓ Всё готово к поездке</span>
+    </div>`;
+
   document.getElementById("hub").innerHTML = `
+    ${todoBanner}
     <div class="card card-glass reveal">
       <div class="hub-stats">
         <div class="stat">
@@ -104,6 +260,11 @@ function renderHub() {
       </div>
     </div>
   `;
+
+  document.getElementById("todo-hub-btn")?.addEventListener("click", () => {
+    document.querySelector('[data-nav="todo"]')?.click();
+  });
+  updateTodoBadges();
 }
 
 function renderPlan() {
@@ -115,8 +276,11 @@ function renderPlan() {
       const open = day.date === today || idx === 0 ? " open" : "";
       const steps = day.steps
         .map(
-          (step, si) => `
-        <div class="step" style="animation-delay:${si * 0.05}s">
+          (step, si) => {
+            const ticketId = step.link ? step.ticketId || `${day.id}-s${si}` : null;
+            const needsTicket = ticketId && !isTicketBought(ticketId);
+            return `
+        <div class="step${needsTicket ? " step--needs-ticket" : ""}" style="animation-delay:${si * 0.05}s">
           <div class="step-head">
             <span class="step-time">${step.time || "—"}</span>
             <span class="step-title">${step.title}</span>
@@ -136,16 +300,25 @@ function renderPlan() {
                 ? `<a class="btn-link" href="${yandexMap(step.lat, step.lon, step.title)}" target="_blank" rel="noopener">Карта</a>`
                 : ""
             }
-            ${step.link ? `<a class="btn-link" href="${step.link}" target="_blank" rel="noopener">Билеты</a>` : ""}
+            ${
+              step.link
+                ? `<a class="btn-link${needsTicket ? " btn-link-urgent" : ""}" href="${step.link}" target="_blank" rel="noopener">Билеты</a>`
+                : ""
+            }
           </div>
         </div>
-      `,
+      `;
+          },
         )
         .join("");
 
       return `
         <details class="card day-card reveal"${open}>
           <summary>
+            <div class="day-date-badge" aria-hidden="true">
+              <span class="day-date-num">${fmtDayNum(day.date)}</span>
+              <span class="day-date-mon">${fmtMonthShort(day.date)}</span>
+            </div>
             <div class="day-meta">
               <span class="day-label">${day.label}</span>
               <span class="day-summary">${day.weekday} · ${day.summary}</span>
@@ -163,9 +336,10 @@ function renderPlan() {
 function renderTicketsAndHotel() {
   const ticketsEl = document.getElementById("tickets-block");
   ticketsEl.innerHTML = TRIP.tickets
-    .map(
-      (t) => `
-    <div class="ticket-card">
+    .map((t) => {
+      const bought = isTicketBought(t.id);
+      return `
+    <div class="ticket-card${bought ? " ticket-card--bought" : " ticket-card--pending"}">
       <div class="ticket-route">${t.label}</div>
       <div class="ticket-meta">${t.weekday ? t.weekday + " · " : ""}${fmtDate(t.date)} · ${t.train}</div>
       <div class="ticket-meta">${t.from} → ${t.to}</div>
@@ -173,11 +347,15 @@ function renderTicketsAndHotel() {
       <div class="ticket-meta">${t.seats}</div>
       <div class="ticket-meta" style="color:var(--accent);font-weight:700;margin-top:8px">${fmtMoney(t.cost)} ${t.costNote || ""}</div>
       <div class="step-actions" style="margin-top:10px">
-        <a class="btn-link" href="${t.link}" target="_blank" rel="noopener">РЖД</a>
+        ${
+          bought
+            ? `<span class="ticket-done-tag">✓ Куплено</span>`
+            : `<a class="btn-link btn-link-urgent" href="${t.link}" target="_blank" rel="noopener">Купить на РЖД</a>`
+        }
       </div>
     </div>
-  `,
-    )
+  `;
+    })
     .join("");
 
   const h = TRIP.hotel;
@@ -226,10 +404,50 @@ function renderBudget() {
   document.getElementById("budget-total-val").textContent = fmtMoney(displayBudget());
 }
 
-function renderChecks() {
+function renderTodoSummary() {
+  const doLeft = countPendingDo();
+  const prepLeft = countPendingPrepare();
+  const el = document.getElementById("todo-summary");
+
+  if (doLeft + prepLeft === 0) {
+    el.innerHTML = `<p class="todo-summary-done">✓ Всё сделано и собрано — можно ехать!</p>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="todo-summary-grid">
+      <div class="todo-summary-item${doLeft ? " todo-summary-item--urgent" : ""}">
+        <span class="todo-summary-num">${doLeft}</span>
+        <span class="todo-summary-lbl">надо сделать</span>
+      </div>
+      <div class="todo-summary-item">
+        <span class="todo-summary-num">${prepLeft}</span>
+        <span class="todo-summary-lbl">подготовить</span>
+      </div>
+    </div>
+    <p class="todo-summary-hint">Отметьте галочкой — пункт исчезнет с анимацией</p>
+  `;
+}
+
+function renderTodoDo() {
+  const items = collectDoItems().filter((item) => !isDoItemDone(item));
+  const el = document.getElementById("todo-do");
+
+  if (!items.length) {
+    el.innerHTML = `<p class="task-empty">✓ Все задачи выполнены</p>`;
+    return;
+  }
+
+  el.innerHTML = items.map((item) => renderDoItem(item)).join("");
+}
+
+function renderTodoPrepare() {
+  document.getElementById("todo-prepare").innerHTML = TRIP.packing.map((item) => renderPrepareItem(item)).join("");
+}
+
+function renderMustSee() {
   const checks = loadChecks();
-  const mustEl = document.getElementById("must-see");
-  mustEl.innerHTML = TRIP.mustSee
+  document.getElementById("must-see").innerHTML = TRIP.mustSee
     .map((item) => {
       const done = checks["must-" + item.id] || item.done;
       return `
@@ -241,18 +459,22 @@ function renderChecks() {
     `;
     })
     .join("");
+}
 
-  document.getElementById("packing").innerHTML = TRIP.packing
-    .map((item) => {
-      const done = checks["pack-" + item.id] || item.done;
-      return `
-      <label class="check-item${done ? " done" : ""}">
-        <input type="checkbox" data-id="pack-${item.id}" ${done ? "checked" : ""}>
-        <span class="check-text">${item.text}</span>
-      </label>
-    `;
-    })
-    .join("");
+function renderTodoPanel() {
+  renderTodoSummary();
+  renderTodoDo();
+  renderTodoPrepare();
+  renderMustSee();
+  updateTodoBadges();
+}
+
+function refreshAfterTodoChange() {
+  renderHub();
+  renderTodoSummary();
+  renderPlan();
+  renderTicketsAndHotel();
+  updateTodoBadges();
 }
 
 function showMapStatus(mapEl, message, isError) {
@@ -353,14 +575,39 @@ function initMap() {
     });
 }
 
-function bindChecks() {
-  document.getElementById("checks-panel").addEventListener("change", (e) => {
-    const input = e.target.closest("[data-id]");
+function bindTodoPanel() {
+  document.getElementById("todo-panel").addEventListener("change", (e) => {
+    const doInput = e.target.closest("input[data-do-id]");
+    if (doInput) {
+      const { doId, doStorage } = doInput.dataset;
+      const checks = loadChecks();
+      if (doStorage === "ticket") checks[`ticket-${doId}`] = doInput.checked;
+      else checks[`todo-${doId}`] = doInput.checked;
+      saveChecks(checks);
+
+      if (doInput.checked) {
+        dismissTaskRow(doInput.closest("[data-task-wrap]"));
+        setTimeout(() => {
+          renderTodoDo();
+          refreshAfterTodoChange();
+        }, 460);
+      } else {
+        renderTodoPanel();
+        refreshAfterTodoChange();
+      }
+      return;
+    }
+
+    const input = e.target.closest("input[data-id]");
     if (!input) return;
     const checks = loadChecks();
     checks[input.dataset.id] = input.checked;
     saveChecks(checks);
-    input.closest(".check-item").classList.toggle("done", input.checked);
+    input.closest(".check-item, .task-item")?.classList.toggle("done", input.checked);
+    input.closest(".task-item")?.classList.toggle("task-item--done", input.checked);
+    renderTodoSummary();
+    renderHub();
+    updateTodoBadges();
   });
 }
 
@@ -426,9 +673,9 @@ function init() {
   renderPlan();
   renderTicketsAndHotel();
   renderBudget();
-  renderChecks();
+  renderTodoPanel();
   bindNav();
-  bindChecks();
+  bindTodoPanel();
   bindScrollGlass();
   bindReveal();
   registerServiceWorker();

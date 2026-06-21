@@ -8,6 +8,100 @@ const TRANSPORT_ICON = {
   car: "🚗",
 };
 
+function getVehicleKind(transport) {
+  if (transport === "train") return "train";
+  if (transport === "carshare" || transport === "car") return "car";
+  if (transport === "bus") return "ferry";
+  if (transport === "metro") return "metro";
+  if (transport === "walk") return "walk";
+  return "default";
+}
+
+function getBearing(fromLat, fromLon, toLat, toLon) {
+  const φ1 = (fromLat * Math.PI) / 180;
+  const φ2 = (toLat * Math.PI) / 180;
+  const Δλ = ((toLon - fromLon) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+function buildVehicleMarkerHtml(transport, bearing) {
+  const kind = getVehicleKind(transport);
+  const rot = typeof bearing === "number" ? bearing : 0;
+  const icon = TRANSPORT_ICON[transport] || "📍";
+
+  if (kind === "train") {
+    return `
+      <div class="tour-vehicle-shell" style="--bearing:${rot}deg">
+        <div class="tour-vehicle tour-vehicle--train">
+          <span class="tour-smoke tour-smoke-1"></span>
+          <span class="tour-smoke tour-smoke-2"></span>
+          <span class="tour-smoke tour-smoke-3"></span>
+          <span class="tour-vehicle-icon" aria-hidden="true">🚆</span>
+        </div>
+      </div>`;
+  }
+
+  if (kind === "car") {
+    return `
+      <div class="tour-vehicle-shell" style="--bearing:${rot}deg">
+        <div class="tour-vehicle tour-vehicle--car">
+          <span class="tour-car-dust"></span>
+          <span class="tour-vehicle-icon" aria-hidden="true">🚗</span>
+        </div>
+      </div>`;
+  }
+
+  if (kind === "ferry") {
+    return `
+      <div class="tour-vehicle-shell" style="--bearing:${rot}deg">
+        <div class="tour-vehicle tour-vehicle--ferry">
+          <span class="tour-wave tour-wave-1"></span>
+          <span class="tour-wave tour-wave-2"></span>
+          <span class="tour-ferry-smoke"></span>
+          <span class="tour-vehicle-icon" aria-hidden="true">⛴</span>
+        </div>
+      </div>`;
+  }
+
+  if (kind === "metro") {
+    return `
+      <div class="tour-vehicle-shell" style="--bearing:${rot}deg">
+        <div class="tour-vehicle tour-vehicle--metro">
+          <span class="tour-vehicle-icon" aria-hidden="true">🚇</span>
+        </div>
+      </div>`;
+  }
+
+  if (kind === "walk") {
+    return `
+      <div class="tour-vehicle-shell" style="--bearing:${rot}deg">
+        <div class="tour-vehicle tour-vehicle--walk">
+          <span class="tour-vehicle-icon" aria-hidden="true">🚶</span>
+        </div>
+      </div>`;
+  }
+
+  return `
+    <div class="tour-vehicle-shell" style="--bearing:${rot}deg">
+      <div class="tour-vehicle tour-vehicle--default">
+        <span class="tour-marker-pulse"></span>
+        <span class="tour-vehicle-icon" aria-hidden="true">${icon}</span>
+      </div>
+    </div>`;
+}
+
+function createVehicleIcon(transport, bearing) {
+  const size = 56;
+  return L.divIcon({
+    className: "tour-marker-wrap",
+    html: buildVehicleMarkerHtml(transport, bearing),
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+}
+
 const TourAnimator = (function () {
   function lerp(a, b, t) {
     return a + (b - a) * t;
@@ -29,6 +123,7 @@ const TourAnimator = (function () {
     this.traveledLine = null;
     this.traveledPoints = [];
     this.onUpdate = null;
+    this.currentTransport = null;
 
     const coords = route.map((p) => [p.lat, p.lon]);
     this.plannedLine = L.polyline(coords, {
@@ -44,12 +139,7 @@ const TourAnimator = (function () {
       lineCap: "round",
     }).addTo(map);
 
-    const icon = L.divIcon({
-      className: "tour-marker-wrap",
-      html: '<div class="tour-marker"><span class="tour-marker-pulse"></span></div>',
-      iconSize: [28, 28],
-      iconAnchor: [14, 14],
-    });
+    const icon = createVehicleIcon(null, 0);
 
     this.marker = L.marker(coords[0], { icon, zIndexOffset: 1000 }).addTo(map);
 
@@ -72,6 +162,12 @@ const TourAnimator = (function () {
     this.onUpdate = fn;
   };
 
+  TourAnimatorInstance.prototype.setVehicle = function (transport, from, to) {
+    const bearing = from && to ? getBearing(from.lat, from.lon, to.lat, to.lon) : 0;
+    this.currentTransport = transport;
+    this.marker.setIcon(createVehicleIcon(transport, bearing));
+  };
+
   TourAnimatorInstance.prototype.emitUpdate = function (payload) {
     if (this.onUpdate) this.onUpdate(payload);
   };
@@ -83,6 +179,7 @@ const TourAnimator = (function () {
     this.traveledPoints = [[this.route[0].lat, this.route[0].lon]];
     this.traveledLine.setLatLngs(this.traveledPoints);
     this.marker.setLatLng(this.traveledPoints[0]);
+    this.setVehicle(null, null, null);
     this.map.fitBounds(this.plannedLine.getBounds(), { padding: [36, 36], maxZoom: 7 });
     this.emitUpdate({
       legIndex: -1,
@@ -102,6 +199,8 @@ const TourAnimator = (function () {
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let frame = 0;
     let lastPanAt = 0;
+
+    this.setVehicle(leg.transport, from, to);
 
     this.emitUpdate({
       legIndex: legIdx,
@@ -202,15 +301,14 @@ const TourAnimator = (function () {
   return TourAnimatorInstance;
 })();
 
-function renderTourStops(container, route, legs, activeIdx, legProgress) {
+function buildTourStopsList(container, route, legs) {
   container.innerHTML = route
     .map((stop, i) => {
-      const isActive = i === activeIdx;
-      const isDone = i < activeIdx || (isActive && legProgress >= 1);
       const leg = legs.find((l) => l.to === i);
       const transport = leg ? leg.transport : null;
       return `
-        <li class="tour-stop${isActive && legProgress < 1 ? " tour-stop-active" : ""}${isDone ? " tour-stop-done" : ""}" data-idx="${i}">
+        <li class="tour-stop tour-stop-pending" data-idx="${i}">
+          <span class="tour-stop-progress" aria-hidden="true"></span>
           <span class="tour-stop-num">${i + 1}</span>
           <span class="tour-stop-text">
             <strong>${stop.name}</strong>
@@ -221,8 +319,60 @@ function renderTourStops(container, route, legs, activeIdx, legProgress) {
       `;
     })
     .join("");
+}
 
-  container.querySelector(".tour-stop-active")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+const tourStopsScroll = { lastIdx: -1, lastAt: 0 };
+
+function scrollTourStopIntoView(container, el, idx) {
+  if (!container || !el) return;
+  const now = performance.now();
+  if (idx === tourStopsScroll.lastIdx && now - tourStopsScroll.lastAt < 280) return;
+
+  const containerRect = container.getBoundingClientRect();
+  const elRect = el.getBoundingClientRect();
+  const offset = elRect.top - containerRect.top - containerRect.height / 2 + elRect.height / 2;
+
+  if (Math.abs(offset) < 12) return;
+
+  tourStopsScroll.lastIdx = idx;
+  tourStopsScroll.lastAt = now;
+
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  container.scrollTo({
+    top: container.scrollTop + offset,
+    behavior: reduceMotion ? "auto" : "smooth",
+  });
+}
+
+function updateTourStops(container, legs, activeIdx, legProgress, legIndex, playing) {
+  if (!container) return;
+
+  const items = container.querySelectorAll(".tour-stop");
+  let scrollTarget = null;
+  let scrollIdx = activeIdx;
+
+  items.forEach((el, i) => {
+    const isTarget = i === activeIdx;
+    const isDone = i < activeIdx || (isTarget && legProgress >= 1);
+    const isActive = isTarget && legIndex >= 0 && legProgress < 1;
+
+    el.classList.toggle("tour-stop-active", isActive);
+    el.classList.toggle("tour-stop-done", isDone && !isActive);
+    el.classList.toggle("tour-stop-pending", !isDone && !isActive);
+    el.style.setProperty("--leg-progress", isActive ? String(legProgress) : isDone ? "1" : "0");
+
+    if (isActive && playing) scrollTarget = el;
+    else if (isTarget && legProgress >= 0.98) scrollTarget = el;
+    if (scrollTarget) scrollIdx = i;
+  });
+
+  if (scrollTarget && playing) scrollTourStopIntoView(container, scrollTarget, scrollIdx);
+}
+
+function renderTourStops(container, route, legs, activeIdx, legProgress, legIndex, playing) {
+  buildTourStopsList(container, route, legs);
+  tourStopsScroll.lastIdx = -1;
+  updateTourStops(container, legs, activeIdx, legProgress, legIndex ?? -1, !!playing);
 }
 
 function initTourAnimation(map) {
@@ -237,8 +387,32 @@ function initTourAnimation(map) {
   const btnPlay = document.getElementById("tour-play");
   const btnReset = document.getElementById("tour-reset");
 
-  let currentLeg = -1;
-  let activeStopIdx = 0;
+  let stopsBuilt = false;
+
+  function ensureStopsList() {
+    if (!stopsBuilt) {
+      buildTourStopsList(stopsList, TRIP.tourRoute, TRIP.tourLegs);
+      stopsBuilt = true;
+    }
+  }
+
+  function syncStops(state) {
+    ensureStopsList();
+    const nextStop =
+      state.done
+        ? TRIP.tourRoute.length - 1
+        : state.legIndex >= 0
+          ? TRIP.tourLegs[state.legIndex].to
+          : 0;
+    updateTourStops(
+      stopsList,
+      TRIP.tourLegs,
+      nextStop,
+      state.progress || 0,
+      state.legIndex,
+      state.playing,
+    );
+  }
 
   function overallProgress(legIdx, legProgress) {
     const total = TRIP.tourLegs.length;
@@ -262,17 +436,7 @@ function initTourAnimation(map) {
             ? `Этап ${state.legIndex + 1} из ${TRIP.tourLegs.length}`
             : "Нажмите ▶";
     }
-    const nextStop =
-      state.done
-        ? TRIP.tourRoute.length - 1
-        : state.legIndex >= 0
-          ? TRIP.tourLegs[state.legIndex].to
-          : 0;
-    if (state.legIndex !== currentLeg || nextStop !== activeStopIdx || state.done) {
-      currentLeg = state.legIndex;
-      activeStopIdx = nextStop;
-      renderTourStops(stopsList, TRIP.tourRoute, TRIP.tourLegs, nextStop, state.progress || 0);
-    }
+    syncStops(state);
     if (btnPlay) btnPlay.textContent = state.playing ? "⏸" : "▶";
   });
 
@@ -288,10 +452,12 @@ function initTourAnimation(map) {
     animator.pause();
     animator.legIndex = 0;
     animator.reset();
-    renderTourStops(stopsList, TRIP.tourRoute, TRIP.tourLegs, 0, 0);
+    stopsBuilt = false;
+    tourStopsScroll.lastIdx = -1;
+    renderTourStops(stopsList, TRIP.tourRoute, TRIP.tourLegs, 0, 0, -1, false);
   });
 
+  renderTourStops(stopsList, TRIP.tourRoute, TRIP.tourLegs, 0, 0, -1, false);
   animator.reset();
-  renderTourStops(stopsList, TRIP.tourRoute, TRIP.tourLegs, 0, 0);
   return animator;
 }
