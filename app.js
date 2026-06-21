@@ -445,17 +445,37 @@ function renderTodoPrepare() {
   document.getElementById("todo-prepare").innerHTML = TRIP.packing.map((item) => renderPrepareItem(item)).join("");
 }
 
+function renderOfficialLinks(item) {
+  const links =
+    item.officialLinks ||
+    (item.officialLink ? [{ href: item.officialLink, label: item.officialLabel || "Сайт" }] : []);
+  if (!links.length) return "";
+  return `
+    <div class="visit-item-links">
+      ${links
+        .map(
+          (l) =>
+            `<a class="btn-link btn-link-site" href="${l.href}" target="_blank" rel="noopener">${l.label}</a>`,
+        )
+        .join("")}
+    </div>`;
+}
+
 function renderMustSee() {
   const checks = loadChecks();
   document.getElementById("must-see").innerHTML = TRIP.mustSee
     .map((item) => {
       const done = checks["must-" + item.id] || item.done;
+      const links = renderOfficialLinks(item);
       return `
-      <label class="check-item${done ? " done" : ""}">
-        <input type="checkbox" data-id="must-${item.id}" ${done ? "checked" : ""}>
-        <span class="check-text">${item.name}</span>
-        <span class="check-tag">${item.day}</span>
-      </label>
+      <div class="visit-item${links ? " visit-item--has-links" : ""}">
+        <label class="check-item${done ? " done" : ""}">
+          <input type="checkbox" data-id="must-${item.id}" ${done ? "checked" : ""}>
+          <span class="check-text">${item.name}</span>
+          <span class="check-tag">${item.day}</span>
+        </label>
+        ${links}
+      </div>
     `;
     })
     .join("");

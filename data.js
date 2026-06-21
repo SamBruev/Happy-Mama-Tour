@@ -71,11 +71,47 @@ const TRIP = {
   ],
 
   mustSee: [
-    { id: "pushkin", name: "Екатерининский дворец · Пушкин", day: "5 авг", done: false },
+    {
+      id: "pushkin",
+      name: "Екатерининский дворец · Пушкин",
+      day: "5 авг",
+      done: false,
+      officialLinks: [
+        { href: "https://www.tzar.ru/", label: "Сайт" },
+        { href: "https://tkt.tzar.ru/", label: "Билеты" },
+      ],
+    },
     { id: "galka", name: "Галка · подруга мамы", day: "5 авг", done: false },
-    { id: "peterhof", name: "Петергоф · фонтаны", day: "6 авг", done: false },
-    { id: "vyborg", name: "Выборг · замок и Монрепо", day: "7 авг", done: false },
-    { id: "valaam", name: "Валаам · монастырь", day: "8 авг", done: false },
+    {
+      id: "peterhof",
+      name: "Петергоф · фонтаны",
+      day: "6 авг",
+      done: false,
+      officialLinks: [
+        { href: "https://peterhofmuseum.ru/", label: "Сайт" },
+        { href: "https://tickets.peterhofmuseum.ru/", label: "Билеты" },
+      ],
+    },
+    {
+      id: "vyborg",
+      name: "Выборг · замок и Монрепо",
+      day: "7 авг",
+      done: false,
+      officialLinks: [
+        { href: "https://vyborgmuseum.org/", label: "Замок" },
+        { href: "https://monreposmuseum.ru/", label: "Монрепо" },
+      ],
+    },
+    {
+      id: "valaam",
+      name: "Валаам · монастырь",
+      day: "8 авг",
+      done: false,
+      officialLinks: [
+        { href: "https://valaam.ru/", label: "Обитель" },
+        { href: "https://valaam.com/", label: "Поездки" },
+      ],
+    },
     { id: "rest", name: "День отдыха · без выездов", day: "9 авг", done: false },
     { id: "embank", name: "Невская перспектива · вечерняя прогулка", day: "4 авг", done: false },
   ],
@@ -93,8 +129,8 @@ const TRIP = {
   todos: [
     {
       id: "galka-call",
-      text: "Договориться с Галкой о визите 5 августа",
-      detail: "Позвонить заранее · Пушкин, ~10:45 · потом Екатерининский дворец",
+      text: "Созвониться с Галкой — уточнить день и время",
+      detail: "Спросить, в какой день и во сколько удобно · ориентир 5 авг, Пушкин",
       urgent: true,
     },
     {
@@ -226,11 +262,15 @@ const TRIP = {
           time: "10:45",
           title: "Галка · подруга мамы",
           transport: "walk",
-          detail: "5 августа, ~10:45 — заранее созвониться и договориться о времени. Чай, без спешки, потом дворец.",
+          detail: "Позвонить заранее: в какой день Галке удобно и во сколько? Ориентир — 5 августа ~10:45, потом дворец.",
           address: "← адрес и телефон Галки, Пушкин",
           lat: 59.7195,
           lon: 30.408,
-          tips: ["Позвонить до 5 августа — отметить в «Дела»", "Можно захватить сладости или цветы"],
+          tips: [
+            "Спросить: какой день и какое время подходят",
+            "После созвона — отметить в «Дела»",
+            "Можно захватить сладости или цветы",
+          ],
         },
         {
           time: "12:00",
@@ -242,7 +282,7 @@ const TRIP = {
           lon: 30.3945,
           cost: 1500,
           costNote: "×2, дворец + парк",
-          link: "https://tcspb.ru/",
+          link: "https://tkt.tzar.ru/",
           ticketNote: "Купить билеты в Екатерининский дворец",
         },
         {
@@ -392,7 +432,7 @@ const TRIP = {
           lon: 30.944,
           cost: 3000,
           costNote: "×2 теплоход",
-          link: "https://valaam.ru/",
+          link: "https://valaam.com/",
           ticketNote: "Купить билеты на теплоход до Валаама",
         },
         {

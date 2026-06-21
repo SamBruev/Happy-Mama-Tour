@@ -1032,6 +1032,35 @@ body::after {
   text-decoration: line-through;
 }
 
+.visit-item {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.visit-item:last-child {
+  border-bottom: none;
+}
+
+.visit-item .check-item {
+  border-bottom: none;
+}
+
+.visit-item-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 18px 14px 50px;
+  position: relative;
+  z-index: 1;
+}
+
+.btn-link-site {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 0.72rem;
+  background: rgba(42, 90, 138, 0.45);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
 .check-tag {
   font-size: 0.68rem;
   font-weight: 700;
