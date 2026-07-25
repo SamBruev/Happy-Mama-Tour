@@ -24,6 +24,24 @@
   --nav-h: 76px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
+  /* Типографическая шкала — 6 ступеней (правило: не плодить размеры) */
+  --fs-caption: 0.72rem;  /* теги, uppercase-лейблы */
+  --fs-footnote: 0.8rem;  /* подписи, детали */
+  --fs-body: 0.9rem;      /* основной текст */
+  --fs-title: 1.02rem;    /* заголовки карточек и шагов */
+  --fs-num: 1.35rem;      /* средние числа, глифы */
+  --fs-display: 1.8rem;   /* крупные числа */
+  /* Семантические цвета состояния */
+  --danger: #ff6b82;
+  --danger-text: #ffd3da;
+  --danger-border: rgba(255, 107, 130, 0.5);
+  --danger-bg: rgba(107, 45, 62, 0.45);
+  --danger-bg-soft: rgba(107, 45, 62, 0.24);
+  --ok: #b8e8c8;
+  --ok-border: rgba(120, 200, 140, 0.4);
+  --ok-bg: rgba(40, 90, 60, 0.45);
+  --line: rgba(255, 255, 255, 0.1);
+  --line-strong: rgba(255, 255, 255, 0.2);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   accent-color: var(--gold);
@@ -46,7 +64,7 @@ html {
 body {
   font-family: var(--font-body);
   color: var(--text);
-  line-height: 1.55;
+  line-height: 1.5;
   font-size: 1rem;
   min-height: 100dvh;
   background: transparent;
@@ -139,7 +157,7 @@ body::after {
   background: var(--neva-mid);
   border: 1px solid var(--gold);
   color: var(--cream);
-  font-size: 0.9rem;
+  font-size: var(--fs-body);
   font-weight: 700;
   text-decoration: none;
   transition: transform 0.25s var(--ease-out);
@@ -173,13 +191,13 @@ body:not([data-panel="plan"]) .hero-sub {
 }
 
 body:not([data-panel="plan"]) .hero-script {
-  font-size: 1.3rem;
+  font-size: var(--fs-num);
   letter-spacing: 0.01em;
 }
 
 body:not([data-panel="plan"]) .hero-dates {
   margin-top: 2px;
-  font-size: 0.82rem;
+  font-size: var(--fs-footnote);
 }
 
 body:not([data-panel="plan"]) #hub {
@@ -205,7 +223,7 @@ body:not([data-panel="plan"]) #hub {
 
 .hero-ornament span {
   color: var(--gold-bright);
-  font-size: 0.55rem;
+  font-size: var(--fs-caption);
   letter-spacing: 0.35em;
 }
 
@@ -223,7 +241,7 @@ body:not([data-panel="plan"]) #hub {
 .hero-city {
   margin-top: 6px;
   font-family: var(--font-display);
-  font-size: 1rem;
+  font-size: var(--fs-title);
   font-weight: 700;
   letter-spacing: 0.28em;
   text-transform: uppercase;
@@ -232,7 +250,7 @@ body:not([data-panel="plan"]) #hub {
 
 .hero-dates {
   margin-top: 8px;
-  font-size: 0.92rem;
+  font-size: var(--fs-body);
   font-weight: 700;
   color: var(--gold-bright);
   font-variant-numeric: tabular-nums;
@@ -240,7 +258,7 @@ body:not([data-panel="plan"]) #hub {
 
 .hero-sub {
   margin-top: 6px;
-  font-size: 0.82rem;
+  font-size: var(--fs-footnote);
   color: var(--muted);
 }
 
@@ -300,13 +318,13 @@ body:not([data-panel="plan"]) #hub {
   padding: 10px 6px;
   border-radius: 14px;
   background: rgba(15, 40, 71, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--line);
 }
 
 .stat-val {
   display: block;
   font-family: var(--font-display);
-  font-size: 1.35rem;
+  font-size: var(--fs-num);
   font-weight: 700;
   color: var(--gold-bright);
   font-variant-numeric: tabular-nums;
@@ -315,7 +333,7 @@ body:not([data-panel="plan"]) #hub {
 .stat-lbl {
   display: block;
   margin-top: 4px;
-  font-size: 0.7rem;
+  font-size: var(--fs-caption);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -349,7 +367,7 @@ body:not([data-panel="plan"]) #hub {
   align-items: center;
   gap: 10px;
   margin: 18px 0 12px;
-  font-size: 0.76rem;
+  font-size: var(--fs-footnote);
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -392,14 +410,14 @@ body:not([data-panel="plan"]) #hub {
 
 .now-day-label {
   font-family: var(--font-display);
-  font-size: 1.02rem;
+  font-size: var(--fs-title);
   font-weight: 700;
   color: var(--cream);
 }
 
 .now-day-tag {
   flex-shrink: 0;
-  font-size: 0.66rem;
+  font-size: var(--fs-caption);
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -413,7 +431,7 @@ body:not([data-panel="plan"]) #hub {
   position: relative;
   z-index: 1;
   padding: 10px 0 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--line);
 }
 
 .now-step:first-of-type {
@@ -423,7 +441,7 @@ body:not([data-panel="plan"]) #hub {
 
 .now-step-kind {
   display: inline-block;
-  font-size: 0.66rem;
+  font-size: var(--fs-caption);
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -443,7 +461,7 @@ body:not([data-panel="plan"]) #hub {
 
 .now-step-time {
   flex-shrink: 0;
-  font-size: 1.05rem;
+  font-size: var(--fs-title);
   font-weight: 800;
   color: var(--gold-bright);
   font-variant-numeric: tabular-nums;
@@ -451,7 +469,7 @@ body:not([data-panel="plan"]) #hub {
 
 .now-step-title {
   font-family: var(--font-display);
-  font-size: 1.02rem;
+  font-size: var(--fs-title);
   font-weight: 700;
   color: var(--cream);
   line-height: 1.3;
@@ -459,7 +477,7 @@ body:not([data-panel="plan"]) #hub {
 
 .now-step-addr {
   margin-top: 4px;
-  font-size: 0.84rem;
+  font-size: var(--fs-footnote);
   color: var(--label);
 }
 
@@ -484,7 +502,7 @@ body:not([data-panel="plan"]) #hub {
 
 .now-count-num {
   font-family: var(--font-display);
-  font-size: 2.6rem;
+  font-size: var(--fs-display);
   font-weight: 700;
   color: var(--gold-bright);
   line-height: 1;
@@ -492,14 +510,14 @@ body:not([data-panel="plan"]) #hub {
 }
 
 .now-count-lbl {
-  font-size: 0.95rem;
+  font-size: var(--fs-body);
   font-weight: 700;
   color: var(--cream);
 }
 
 .now-sub {
   margin-top: 8px;
-  font-size: 0.86rem;
+  font-size: var(--fs-body);
   color: var(--label);
   position: relative;
   z-index: 1;
@@ -527,7 +545,7 @@ body:not([data-panel="plan"]) #hub {
   font-family: var(--font-display);
   font-weight: 700;
   color: var(--cream);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--line);
   position: relative;
   z-index: 1;
   -webkit-tap-highlight-color: transparent;
@@ -549,7 +567,7 @@ body:not([data-panel="plan"]) #hub {
 
 .day-date-num {
   font-family: var(--font-display);
-  font-size: 1.35rem;
+  font-size: var(--fs-num);
   font-weight: 700;
   color: var(--gold-bright);
   line-height: 1;
@@ -559,7 +577,7 @@ body:not([data-panel="plan"]) #hub {
 .day-date-mon {
   margin-top: 3px;
   font-family: var(--font-body);
-  font-size: 0.58rem;
+  font-size: var(--fs-caption);
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -567,7 +585,7 @@ body:not([data-panel="plan"]) #hub {
 }
 
 .day-card > summary:active {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--line);
 }
 
 .day-card > summary::-webkit-details-marker {
@@ -595,13 +613,13 @@ body:not([data-panel="plan"]) #hub {
 }
 
 .day-label {
-  font-size: 0.95rem;
+  font-size: var(--fs-body);
   letter-spacing: 0.02em;
 }
 
 .day-summary {
   font-family: var(--font-body);
-  font-size: 0.82rem;
+  font-size: var(--fs-footnote);
   font-weight: 500;
   color: var(--muted);
   display: -webkit-box;
@@ -613,7 +631,7 @@ body:not([data-panel="plan"]) #hub {
 
 .day-cost {
   font-family: var(--font-body);
-  font-size: 0.74rem;
+  font-size: var(--fs-caption);
   font-weight: 700;
   color: var(--gold-bright);
   font-variant-numeric: tabular-nums;
@@ -673,7 +691,7 @@ body:not([data-panel="plan"]) #hub {
 }
 
 .step-time {
-  font-size: 0.88rem;
+  font-size: var(--fs-body);
   font-weight: 800;
   color: var(--gold-bright);
   font-variant-numeric: tabular-nums;
@@ -681,26 +699,26 @@ body:not([data-panel="plan"]) #hub {
 
 .step-title {
   font-family: var(--font-display);
-  font-size: 1rem;
+  font-size: var(--fs-title);
   font-weight: 700;
   color: var(--cream);
 }
 
 .step-transport {
-  font-size: 0.62rem;
+  font-size: var(--fs-caption);
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   padding: 3px 9px;
   border-radius: 999px;
   background: rgba(15, 40, 71, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid var(--line-strong);
 }
 
 .step-transport[data-t="train"] {
-  border-color: rgba(107, 45, 62, 0.6);
-  color: #f0c4d0;
-  background: rgba(107, 45, 62, 0.25);
+  border-color: var(--danger-bg);
+  color: var(--danger-text);
+  background: var(--danger-bg-soft);
 }
 
 .step-transport[data-t="carshare"] {
@@ -715,14 +733,14 @@ body:not([data-panel="plan"]) #hub {
 }
 
 .step-transport[data-t="metro"] {
-  border-color: rgba(107, 45, 62, 0.45);
-  color: #e8b4c4;
+  border-color: var(--danger-bg);
+  color: var(--danger-text);
 }
 
 .step-detail,
 .step-address {
   margin-top: 7px;
-  font-size: 0.88rem;
+  font-size: var(--fs-body);
   color: var(--muted);
   line-height: 1.5;
 }
@@ -733,7 +751,7 @@ body:not([data-panel="plan"]) #hub {
 
 .step-cost {
   margin-top: 8px;
-  font-size: 0.82rem;
+  font-size: var(--fs-footnote);
   font-weight: 800;
   color: var(--gold-bright);
 }
@@ -741,7 +759,7 @@ body:not([data-panel="plan"]) #hub {
 .step-tips {
   margin-top: 6px;
   padding-left: 16px;
-  font-size: 0.78rem;
+  font-size: var(--fs-footnote);
   color: var(--label);
 }
 
@@ -762,7 +780,7 @@ body:not([data-panel="plan"]) #hub {
   min-height: 44px;
   display: inline-flex;
   align-items: center;
-  font-size: 0.78rem;
+  font-size: var(--fs-footnote);
   font-weight: 700;
   font-family: inherit;
   text-decoration: none;
@@ -777,33 +795,33 @@ body:not([data-panel="plan"]) #hub {
 }
 
 .step--needs-ticket::before {
-  border-color: #ff6b82;
+  border-color: var(--danger);
   box-shadow: 0 0 0 3px rgba(255, 90, 110, 0.35);
 }
 
 .step--needs-ticket .step-title {
-  color: #ffd0d8;
+  color: var(--danger-text);
 }
 
 .btn-link-urgent {
-  border-color: rgba(255, 110, 130, 0.7);
-  background: rgba(107, 45, 62, 0.55);
-  color: #ffd0d8;
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger-text);
 }
 
 .btn-link-urgent:active {
-  background: rgba(255, 110, 130, 0.25);
-  border-color: #ff8a9a;
+  background: rgba(255, 107, 130, 0.25);
+  border-color: var(--danger);
 }
 
 .ticket-card--pending {
   box-shadow:
     var(--card-shadow),
-    inset 0 0 0 1px rgba(255, 110, 130, 0.35);
+    inset 0 0 0 1px var(--danger-border);
 }
 
 .ticket-card--bought {
-  border-color: rgba(120, 200, 140, 0.35);
+  border-color: var(--ok-border);
 }
 
 .ticket-done-tag {
@@ -811,11 +829,11 @@ body:not([data-panel="plan"]) #hub {
   align-items: center;
   padding: 8px 14px;
   border-radius: 999px;
-  font-size: 0.78rem;
+  font-size: var(--fs-footnote);
   font-weight: 800;
-  color: #b8e8c8;
-  background: rgba(40, 90, 60, 0.45);
-  border: 1px solid rgba(120, 200, 140, 0.45);
+  color: var(--ok);
+  background: var(--ok-bg);
+  border: 1px solid var(--ok-border);
 }
 
 /* --- Вкладка «Дела» --- */
@@ -836,30 +854,30 @@ body:not([data-panel="plan"]) #hub {
   padding: 14px 10px;
   border-radius: 14px;
   background: rgba(15, 40, 71, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--line);
 }
 
 .todo-summary-item--urgent {
-  background: rgba(107, 45, 62, 0.38);
-  border-color: rgba(255, 110, 130, 0.45);
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
 }
 
 .todo-summary-num {
   display: block;
   font-family: var(--font-display);
-  font-size: 1.75rem;
+  font-size: var(--fs-display);
   font-weight: 700;
   color: var(--gold-bright);
 }
 
 .todo-summary-item--urgent .todo-summary-num {
-  color: #ffb4c4;
+  color: var(--danger-text);
 }
 
 .todo-summary-lbl {
   display: block;
   margin-top: 4px;
-  font-size: 0.65rem;
+  font-size: var(--fs-caption);
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -868,16 +886,16 @@ body:not([data-panel="plan"]) #hub {
 
 .todo-summary-hint {
   margin-top: 12px;
-  font-size: 0.76rem;
+  font-size: var(--fs-footnote);
   color: var(--muted);
   text-align: center;
 }
 
 .todo-summary-done {
   text-align: center;
-  font-size: 0.92rem;
+  font-size: var(--fs-body);
   font-weight: 700;
-  color: #b8e8c8;
+  color: var(--ok);
 }
 
 .task-item {
@@ -885,7 +903,7 @@ body:not([data-panel="plan"]) #hub {
   align-items: flex-start;
   gap: 12px;
   padding: 14px 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--line);
   position: relative;
   z-index: 1;
   overflow: hidden;
@@ -901,8 +919,8 @@ body:not([data-panel="plan"]) #hub {
 }
 
 .task-item--urgent {
-  background: rgba(107, 45, 62, 0.22);
-  border-left: 3px solid #ff6b82;
+  background: var(--danger-bg-soft);
+  border-left: 3px solid var(--danger);
 }
 
 .task-item--prepare {
@@ -997,12 +1015,12 @@ body:not([data-panel="plan"]) #hub {
 
 .task-check input,
 .task-item--urgent .task-check input {
-  border-color: rgba(255, 140, 155, 0.75);
+  border-color: var(--danger-border);
 }
 
 .task-check input:checked {
-  background: #ff6b82;
-  border-color: #ff6b82;
+  background: var(--danger);
+  border-color: var(--danger);
 }
 
 .task-item--prepare > input {
@@ -1018,18 +1036,18 @@ body:not([data-panel="plan"]) #hub {
 }
 
 .task-title {
-  font-size: 0.95rem;
+  font-size: var(--fs-body);
   font-weight: 700;
   color: var(--cream);
   line-height: 1.35;
 }
 
 .task-item--urgent .task-title {
-  color: #ffd0d8;
+  color: var(--danger-text);
 }
 
 .task-detail {
-  font-size: 0.82rem;
+  font-size: var(--fs-footnote);
   color: var(--muted);
   line-height: 1.4;
 }
@@ -1042,15 +1060,15 @@ body:not([data-panel="plan"]) #hub {
 .task-empty {
   padding: 20px 18px;
   text-align: center;
-  font-size: 0.88rem;
+  font-size: var(--fs-body);
   font-weight: 700;
-  color: #b8e8c8;
+  color: var(--ok);
   position: relative;
   z-index: 1;
 }
 
 .nav-btn--alert .nav-icon {
-  color: #ff8a9a;
+  color: var(--danger);
   animation: navPulse 1.8s ease-in-out infinite;
 }
 
@@ -1084,8 +1102,8 @@ body:not([data-panel="plan"]) #hub {
   gap: 8px;
   align-items: center;
   padding: 12px 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 0.88rem;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-body);
   position: relative;
   z-index: 1;
 }
@@ -1102,7 +1120,7 @@ body:not([data-panel="plan"]) #hub {
 
 .budget-note {
   grid-column: 1 / -1;
-  font-size: 0.74rem;
+  font-size: var(--fs-caption);
   color: var(--muted);
   margin-top: -2px;
 }
@@ -1116,7 +1134,7 @@ body:not([data-panel="plan"]) #hub {
 }
 
 .budget-total-lbl {
-  font-size: 0.74rem;
+  font-size: var(--fs-caption);
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1126,7 +1144,7 @@ body:not([data-panel="plan"]) #hub {
 .budget-total-val {
   margin-top: 6px;
   font-family: var(--font-display);
-  font-size: 1.85rem;
+  font-size: var(--fs-display);
   font-weight: 700;
   color: var(--gold-bright);
   font-variant-numeric: tabular-nums;
@@ -1138,7 +1156,7 @@ body:not([data-panel="plan"]) #hub {
   gap: 3px;
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px dashed rgba(255, 255, 255, 0.14);
+  border-top: 1px dashed var(--line-strong);
 }
 
 .budget-compare:empty {
@@ -1146,23 +1164,23 @@ body:not([data-panel="plan"]) #hub {
 }
 
 .budget-compare-lbl {
-  font-size: 0.78rem;
+  font-size: var(--fs-footnote);
   color: var(--muted);
 }
 
 .budget-compare-val {
-  font-size: 0.88rem;
+  font-size: var(--fs-body);
   font-weight: 800;
   color: var(--label);
   font-variant-numeric: tabular-nums;
 }
 
 .budget-compare-val--over {
-  color: #ffb4c4;
+  color: var(--danger-text);
 }
 
 .budget-compare-val--under {
-  color: #b8e8c8;
+  color: var(--ok);
 }
 
 .ticket-card,
@@ -1184,7 +1202,7 @@ body:not([data-panel="plan"]) #hub {
 }
 
 .ticket-card + .ticket-card {
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--line);
 }
 
 .ticket-route,
@@ -1192,13 +1210,13 @@ body:not([data-panel="plan"]) #hub {
   font-family: var(--font-display);
   font-weight: 700;
   color: var(--cream);
-  font-size: 1.05rem;
+  font-size: var(--fs-title);
 }
 
 .ticket-meta,
 .hotel-row {
   margin-top: 7px;
-  font-size: 0.84rem;
+  font-size: var(--fs-footnote);
   color: var(--muted);
 }
 
@@ -1215,7 +1233,7 @@ body:not([data-panel="plan"]) #hub {
   align-items: flex-start;
   gap: 12px;
   padding: 13px 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--line);
   cursor: pointer;
   position: relative;
   z-index: 1;
@@ -1241,7 +1259,7 @@ body:not([data-panel="plan"]) #hub {
 }
 
 .visit-item {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--line);
 }
 
 .visit-item:last-child {
@@ -1264,13 +1282,13 @@ body:not([data-panel="plan"]) #hub {
 .btn-link-site {
   min-height: 40px;
   padding: 8px 14px;
-  font-size: 0.72rem;
+  font-size: var(--fs-caption);
   background: rgba(42, 90, 138, 0.45);
   border-color: rgba(255, 255, 255, 0.25);
 }
 
 .check-tag {
-  font-size: 0.68rem;
+  font-size: var(--fs-caption);
   font-weight: 700;
   color: var(--gold);
   margin-left: auto;
@@ -1288,7 +1306,7 @@ body:not([data-panel="plan"]) #hub {
   grid-template-columns: repeat(5, 1fr);
   padding: 8px 6px;
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--line-strong);
   -webkit-backdrop-filter: blur(24px) saturate(160%);
   backdrop-filter: blur(24px) saturate(160%);
   border: 1px solid rgba(255, 255, 255, 0.28);
@@ -1317,7 +1335,7 @@ body:not([data-panel="plan"]) #hub {
   background: transparent;
   color: var(--muted);
   font-family: inherit;
-  font-size: 0.72rem;
+  font-size: var(--fs-caption);
   font-weight: 800;
   letter-spacing: 0.02em;
   display: flex;
@@ -1353,7 +1371,7 @@ body:not([data-panel="plan"]) #hub {
 }
 
 .nav-icon {
-  font-size: 1.25rem;
+  font-size: var(--fs-num);
   line-height: 1;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
   transition: transform 0.35s var(--ease-out);
@@ -1364,15 +1382,15 @@ body:not([data-panel="plan"]) #hub {
   padding: 14px 16px;
   border-radius: 16px;
   background: rgba(42, 90, 138, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid var(--line-strong);
   border-left: 3px solid var(--gold);
-  font-size: 0.82rem;
+  font-size: var(--fs-footnote);
   color: var(--label);
   line-height: 1.5;
 }
 
 .tip-callout code {
-  font-size: 0.76rem;
+  font-size: var(--fs-footnote);
   color: var(--gold-bright);
 }
 
@@ -1417,7 +1435,7 @@ body:not([data-panel="plan"]) #hub {
 }
 
 .update-toast-text {
-  font-size: 0.88rem;
+  font-size: var(--fs-body);
   font-weight: 700;
   color: var(--cream);
   white-space: nowrap;
@@ -1432,7 +1450,7 @@ body:not([data-panel="plan"]) #hub {
   padding: 8px 16px;
   min-height: 40px;
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: var(--fs-footnote);
   font-weight: 800;
   cursor: pointer;
 }
@@ -1544,7 +1562,7 @@ body:not([data-panel="plan"]) #hub {
 
 .tour-leg-label {
   font-family: var(--font-display);
-  font-size: 1.05rem;
+  font-size: var(--fs-title);
   font-weight: 700;
   color: var(--cream);
   line-height: 1.35;
@@ -1552,7 +1570,7 @@ body:not([data-panel="plan"]) #hub {
 
 .tour-leg-transport {
   margin-top: 6px;
-  font-size: 0.78rem;
+  font-size: var(--fs-footnote);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1573,7 +1591,7 @@ body:not([data-panel="plan"]) #hub {
   border-radius: 999px;
   background: rgba(15, 40, 71, 0.55);
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--line);
 }
 
 /* scaleX вместо width — не вызывает пересчёт layout на каждом кадре. */
@@ -1590,7 +1608,7 @@ body:not([data-panel="plan"]) #hub {
 }
 
 .tour-progress-text {
-  font-size: 0.68rem;
+  font-size: var(--fs-caption);
   font-weight: 800;
   color: var(--muted);
   white-space: nowrap;
@@ -1605,13 +1623,13 @@ body:not([data-panel="plan"]) #hub {
 
 .tour-btn {
   appearance: none;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--line-strong);
   background: rgba(15, 40, 71, 0.5);
   color: var(--cream);
   border-radius: 14px;
   min-width: 48px;
   height: 44px;
-  font-size: 1.1rem;
+  font-size: var(--fs-title);
   cursor: pointer;
   font-family: inherit;
   transition: transform 0.15s ease, background 0.15s ease;
@@ -1631,7 +1649,7 @@ body:not([data-panel="plan"]) #hub {
   background: linear-gradient(135deg, #e8c547 0%, #c9a227 100%);
   border-color: rgba(250, 230, 150, 0.75);
   color: var(--neva-deep);
-  font-size: 1.3rem;
+  font-size: var(--fs-num);
   font-weight: 800;
   box-shadow: 0 6px 18px rgba(201, 162, 39, 0.3);
 }
@@ -1647,7 +1665,7 @@ body:not([data-panel="plan"]) #hub {
   min-height: 200px;
   padding: 24px 20px;
   text-align: center;
-  font-size: 0.92rem;
+  font-size: var(--fs-body);
   color: var(--label);
   background: rgba(15, 40, 71, 0.55);
   border-radius: 20px;
@@ -1655,8 +1673,8 @@ body:not([data-panel="plan"]) #hub {
 }
 
 .map-status--error {
-  color: #f0c4d0;
-  border-color: rgba(107, 45, 62, 0.5);
+  color: var(--danger-text);
+  border-color: var(--danger-bg);
 }
 
 @media (max-width: 480px) {
@@ -1693,7 +1711,7 @@ body:not([data-panel="plan"]) #hub {
   align-items: center;
   gap: 10px;
   padding: 10px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--line);
   opacity: 0.45;
   overflow: hidden;
   transition:
@@ -1746,7 +1764,7 @@ body:not([data-panel="plan"]) #hub {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 0.68rem;
+  font-size: var(--fs-caption);
   font-weight: 800;
   background: rgba(15, 40, 71, 0.65);
   border: 1px solid rgba(201, 162, 39, 0.4);
@@ -1797,17 +1815,17 @@ body:not([data-panel="plan"]) #hub {
 
 .tour-stop-text strong {
   font-family: var(--font-display);
-  font-size: 0.92rem;
+  font-size: var(--fs-body);
   color: var(--cream);
 }
 
 .tour-stop-text small {
-  font-size: 0.78rem;
+  font-size: var(--fs-footnote);
   color: var(--muted);
 }
 
 .tour-stop-transport {
-  font-size: 1rem;
+  font-size: var(--fs-title);
   flex-shrink: 0;
 }
 
@@ -1835,7 +1853,7 @@ body:not([data-panel="plan"]) #hub {
 
 /* text-shadow вместо filter: drop-shadow — фильтр перерисовывал слой на каждом кадре. */
 .tour-vehicle-icon {
-  font-size: 1.65rem;
+  font-size: 1.65rem; /* размер иллюстрации на карте, вне текстовой шкалы */
   line-height: 1;
   position: relative;
   z-index: 2;
@@ -2237,6 +2255,7 @@ body:not([data-panel="plan"]) #hub {
   position: fixed;
   inset: 0;
   z-index: 180;
+  overflow: hidden; /* волны шире экрана не должны создавать прокрутку */
   pointer-events: none;
   opacity: 0;
   visibility: hidden;

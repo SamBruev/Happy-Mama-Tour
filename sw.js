@@ -4,7 +4,7 @@
  * поэтому правки в data.js доходят до телефона со следующего открытия,
  * а не «никогда», как при чистом cache-first.
  */
-const VERSION = "v4";
+const VERSION = "v5";
 const CACHE = `happy-mama-${VERSION}`;
 
 const CORE = [
