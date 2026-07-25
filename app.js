@@ -8,7 +8,6 @@ const TRANSPORT_LABEL = {
 };
 
 const STORAGE_KEY = "happy-mama-tour-checks-v2";
-const HIDDEN_KEY = "happy-mama-tour-hidden-v1";
 const PANEL_ORDER = ["plan", "stay", "map", "budget", "todo"];
 const PANEL_TITLES = {
   plan: "План",
@@ -28,11 +27,14 @@ let mapInitStarted = false;
 let revealObserver = null;
 let swipeBusy = false;
 let edgeTouch = null;
-let swipeRowTouch = null;
-let openSwipeRow = null;
 
-const SWIPE_DELETE_W = 96;
-const SWIPE_DELETE_OPEN = 52;
+const ESCAPE_MAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+
+/** Данные из data.js пишет человек — экранируем, чтобы кавычка не ломала разметку. */
+function esc(value) {
+  if (value == null) return "";
+  return String(value).replace(/[&<>"']/g, (ch) => ESCAPE_MAP[ch]);
+}
 
 const LEAFLET_CSS =
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
@@ -61,10 +63,14 @@ function fmtMoney(n) {
   return new Intl.NumberFormat("ru-RU").format(Math.round(n)) + " ₽";
 }
 
-function yandexMap(lat, lon, label) {
-  const ll = `${lon}%2C${lat}`;
-  const text = encodeURIComponent(label || "");
-  return `https://yandex.ru/maps/?pt=${lon},${lat}&z=15&text=${text}`;
+/**
+ * Точка на Яндекс.Картах. `text` не добавляем: вместе с `pt` он превращает
+ * ссылку в поисковый запрос и уводит с точных координат.
+ */
+function yandexMap(lat, lon) {
+  if (lat == null || lon == null) return "https://yandex.ru/maps/";
+  const point = `${lon}%2C${lat}`;
+  return `https://yandex.ru/maps/?ll=${point}&z=16&pt=${point}%2Cpm2rdm`;
 }
 
 function loadChecks() {
@@ -77,73 +83,6 @@ function loadChecks() {
 
 function saveChecks(data) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
-
-function loadHidden() {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) || "[]"));
-  } catch {
-    return new Set();
-  }
-}
-
-function saveHidden(set) {
-  localStorage.setItem(HIDDEN_KEY, JSON.stringify([...set]));
-}
-
-function isHidden(key) {
-  return loadHidden().has(key);
-}
-
-function hideItem(key) {
-  const hidden = loadHidden();
-  hidden.add(key);
-  saveHidden(hidden);
-}
-
-function wrapSwipeRow(key, innerHtml, extraClass = "") {
-  return `
-    <div class="swipe-row${extraClass ? ` ${extraClass}` : ""}" data-hide-key="${key}">
-      <div class="swipe-row__surface">${innerHtml}</div>
-      <button type="button" class="swipe-row__delete" aria-label="Удалить пункт">УДАЛИТЬ</button>
-    </div>
-  `;
-}
-
-function closeSwipeRow(row) {
-  if (!row) return;
-  row.classList.remove("is-open");
-  row.querySelector(".swipe-row__surface")?.style.removeProperty("transform");
-  if (openSwipeRow === row) openSwipeRow = null;
-}
-
-function refreshAfterDelete() {
-  renderHero();
-  renderHub();
-  renderPlan();
-  renderTicketsAndHotel();
-  renderBudget();
-  renderTodoPanel();
-  observeReveals();
-  updateTodoBadges();
-}
-
-function removeSwipeRow(row, key) {
-  hideItem(key);
-  closeSwipeRow(row);
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    refreshAfterDelete();
-    return;
-  }
-  row.classList.add("swipe-row--hide");
-  let finished = false;
-  const finish = () => {
-    if (finished) return;
-    finished = true;
-    refreshAfterDelete();
-  };
-  row.addEventListener("transitionend", finish, { once: true });
-  window.setTimeout(finish, 520);
 }
 
 function isTicketBought(id) {
@@ -169,19 +108,16 @@ function collectDoItems() {
   const h = TRIP.hotel;
 
   if (h.name?.includes("←") || h.bookingRef?.includes("←")) {
-    if (!isHidden("todo:hotel-book")) {
-      items.push({
-        id: "hotel-book",
-        storage: "todo",
-        text: "Забронировать отель",
-        detail: `7 ночей · заезд ${fmtDate(h.checkIn)}${h.lateCheckIn ? " · поздний ~00:30" : ""}`,
-        urgent: true,
-      });
-    }
+    items.push({
+      id: "hotel-book",
+      storage: "todo",
+      text: "Забронировать отель",
+      detail: `7 ночей · заезд ${fmtDate(h.checkIn)}${h.lateCheckIn ? " · поздний ~00:30" : ""}`,
+      urgent: true,
+    });
   }
 
   TRIP.tickets.forEach((t) => {
-    if (isHidden(`ticket:${t.id}`)) return;
     items.push({
       id: t.id,
       storage: "ticket",
@@ -194,9 +130,7 @@ function collectDoItems() {
   });
 
   TRIP.days.forEach((day) => {
-    if (isHidden(`day:${day.id}`)) return;
     day.steps.forEach((step, si) => {
-      if (isHidden(`step:${day.id}:${si}`)) return;
       if (!step.link) return;
       items.push({
         id: step.ticketId || `${day.id}-s${si}`,
@@ -211,7 +145,6 @@ function collectDoItems() {
   });
 
   (TRIP.todos || []).forEach((t) => {
-    if (isHidden(`todo:${t.id}`)) return;
     items.push({
       ...t,
       storage: "todo",
@@ -227,17 +160,34 @@ function countPendingDo() {
 }
 
 function countPendingPrepare() {
-  return TRIP.packing.filter((item) => !isHidden(`pack:${item.id}`) && !isPrepareDone(item)).length;
+  return TRIP.packing.filter((item) => !isPrepareDone(item)).length;
 }
 
 function dismissTaskRow(row) {
-  if (!row) return;
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  if (!row) return Promise.resolve();
+  if (prefersReducedMotion()) {
     row.remove();
-    return;
+    return Promise.resolve();
   }
-  row.classList.add("task-item--hide");
-  row.addEventListener("transitionend", () => row.remove(), { once: true });
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      row.remove();
+      resolve();
+    };
+    // Фиксируем текущую высоту, чтобы схлопывание шло от неё, а не от max-height.
+    row.style.maxHeight = `${row.scrollHeight}px`;
+    requestAnimationFrame(() => {
+      row.classList.add("task-item--hide");
+      row.style.maxHeight = "0px";
+    });
+    row.addEventListener("transitionend", (e) => {
+      if (e.propertyName === "max-height") finish();
+    });
+    setTimeout(finish, 600);
+  });
 }
 
 function updateTodoBadges() {
@@ -246,51 +196,36 @@ function updateTodoBadges() {
 }
 
 function renderDoItem(item) {
-  const done = isDoItemDone(item);
-  if (done) return "";
-  const key = item.storage === "ticket" ? `ticket:${item.id}` : `todo:${item.id}`;
-  if (isHidden(key)) return "";
-  return wrapSwipeRow(
-    key,
-    `
-    <div class="task-item task-item--urgent" data-task-wrap="${item.id}">
+  return `
+    <div class="task-item task-item--urgent" data-task-wrap="${esc(item.id)}">
       <label class="task-check">
-        <input type="checkbox" data-do-id="${item.id}" data-do-storage="${item.storage}" aria-label="Готово: ${item.text}">
+        <input type="checkbox" data-do-id="${esc(item.id)}" data-do-storage="${esc(item.storage)}" aria-label="Готово: ${esc(item.text)}">
       </label>
       <div class="task-body">
-        <span class="task-title">${item.text}</span>
-        ${item.detail ? `<span class="task-detail">${item.detail}</span>` : ""}
+        <span class="task-title">${esc(item.text)}</span>
+        ${item.detail ? `<span class="task-detail">${esc(item.detail)}</span>` : ""}
       </div>
-      ${item.link ? `<a class="btn-link btn-link-urgent task-link" href="${item.link}" target="_blank" rel="noopener">${item.linkLabel || "Открыть"}</a>` : ""}
+      ${item.link ? `<a class="btn-link btn-link-urgent task-link" href="${esc(item.link)}" target="_blank" rel="noopener">${esc(item.linkLabel || "Открыть")}</a>` : ""}
     </div>
-  `,
-    "swipe-row--task",
-  );
+  `;
 }
 
 function renderPrepareItem(item) {
-  if (isHidden(`pack:${item.id}`)) return "";
   const done = isPrepareDone(item);
-  return wrapSwipeRow(
-    `pack:${item.id}`,
-    `
+  return `
     <label class="task-item task-item--prepare${done ? " task-item--done" : ""}">
-      <input type="checkbox" data-id="pack-${item.id}" ${done ? "checked" : ""} aria-label="${item.text}">
+      <input type="checkbox" data-id="pack-${esc(item.id)}" ${done ? "checked" : ""}>
       <div class="task-body">
-        <span class="task-title">${item.text}</span>
+        <span class="task-title">${esc(item.text)}</span>
       </div>
     </label>
-  `,
-    "swipe-row--task",
-  );
+  `;
 }
 
 function sumStepCosts() {
   let total = 0;
   TRIP.days.forEach((day) => {
-    if (isHidden(`day:${day.id}`)) return;
-    day.steps.forEach((step, si) => {
-      if (isHidden(`step:${day.id}:${si}`)) return;
+    day.steps.forEach((step) => {
       if (typeof step.cost === "number") total += step.cost;
     });
   });
@@ -299,59 +234,80 @@ function sumStepCosts() {
 
 function sumBudget() {
   const fixed = TRIP.budgetFixed
-    .filter((b) => !["hotel", "train"].includes(b.id) && !isHidden(`budget:${b.id}`))
+    .filter((b) => !["hotel", "train"].includes(b.id))
     .reduce((s, i) => s + (i.amount || 0), 0);
-  const daily = isHidden("budget:rollup:daily") ? 0 : sumStepCosts();
-  const tickets = isHidden("budget:rollup:trains")
-    ? 0
-    : TRIP.tickets.filter((t) => !isHidden(`ticket:${t.id}`)).reduce((s, t) => s + (t.cost || 0), 0);
-  const hotel = isHidden("budget:rollup:hotel") || isHidden("hotel:main")
-    ? 0
-    : (TRIP.hotel.costPerNight || 0) * (TRIP.hotel.nights || 0);
+  const daily = sumStepCosts();
+  const tickets = TRIP.tickets.reduce((s, t) => s + (t.cost || 0), 0);
+  const hotel = (TRIP.hotel.costPerNight || 0) * (TRIP.hotel.nights || 0);
   return fixed + daily + tickets + hotel;
 }
 
+/** Реальная сумма плана — то, во что поездка обходится по текущим цифрам. */
 function displayBudget() {
-  return typeof TRIP.meta.budget === "number" ? TRIP.meta.budget : sumBudget();
+  return sumBudget();
+}
+
+/** Целевой бюджет из meta.budget — ориентир, а не итог. */
+function budgetTarget() {
+  return typeof TRIP.meta.budget === "number" ? TRIP.meta.budget : null;
+}
+
+function pluralRu(n, one, few, many) {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+  return many;
 }
 
 function renderHero() {
   const el = document.getElementById("hero");
   el.innerHTML = `
     <div class="hero-ornament"><span>СПБ</span></div>
-    <div class="hero-script">${TRIP.meta.title}</div>
+    <h1 class="hero-script">${esc(TRIP.meta.title)}</h1>
     <div class="hero-city">Санкт-Петербург</div>
     <div class="hero-dates">${fmtDate(TRIP.meta.start)} — ${fmtDate(TRIP.meta.end)}</div>
-    <div class="hero-sub">${TRIP.meta.subtitle}</div>
+    <div class="hero-sub">${esc(TRIP.meta.subtitle)}</div>
   `;
+}
+
+let hubRendered = false;
+
+/** Повторный рендер не должен заново проигрывать появление карточек. */
+function keepRevealed(root, alreadyRendered) {
+  if (!alreadyRendered || !root) return;
+  root.querySelectorAll(".reveal").forEach((el) => el.classList.add("visible"));
 }
 
 function renderHub() {
   const total = displayBudget();
   const doLeft = countPendingDo();
   const prepLeft = countPendingPrepare();
+  const totalLeft = doLeft + prepLeft;
+  const subParts = [];
+  if (doLeft) subParts.push(`${doLeft} надо сделать`);
+  if (prepLeft) subParts.push(`${prepLeft} надо собрать`);
   const todoBanner =
-    doLeft + prepLeft > 0
+    totalLeft > 0
       ? `
-    <button type="button" class="todo-hub card card-glass reveal" id="todo-hub-btn">
-      <div class="todo-hub-grid">
-        <div class="todo-hub-cell${doLeft ? " todo-hub-cell--urgent" : ""}">
-          <span class="todo-hub-num">${doLeft}</span>
-          <span class="todo-hub-lbl">сделать</span>
+    <button type="button" class="todo-hub todo-hub--alert card card-glass reveal" id="todo-hub-btn" aria-label="Открыть список дел: осталось ${totalLeft}">
+      <div class="todo-hub-head">
+        <span class="todo-hub-badge" aria-hidden="true">${totalLeft}</span>
+        <div class="todo-hub-copy">
+          <span class="todo-hub-title">Осталось ${totalLeft} ${pluralRu(totalLeft, "дело", "дела", "дел")}</span>
+          <span class="todo-hub-sub">${subParts.join(" · ")}</span>
         </div>
-        <div class="todo-hub-cell">
-          <span class="todo-hub-num">${prepLeft}</span>
-          <span class="todo-hub-lbl">подготовить</span>
-        </div>
+        <span class="todo-hub-go" aria-hidden="true">!</span>
       </div>
-      <span class="todo-hub-cta">Открыть список дел →</span>
+      <span class="todo-hub-cta">Нажмите — список дел</span>
     </button>`
       : `
     <div class="todo-hub card card-glass reveal todo-hub--done">
       <span class="todo-hub-done">✓ Всё готово к поездке</span>
     </div>`;
 
-  document.getElementById("hub").innerHTML = `
+  const hub = document.getElementById("hub");
+  hub.innerHTML = `
     ${todoBanner}
     <div class="card card-glass reveal">
       <div class="hub-stats">
@@ -365,11 +321,14 @@ function renderHub() {
         </div>
         <div class="stat">
           <span class="stat-val">${Math.round(total / 1000)}k</span>
-          <span class="stat-lbl">бюджет ₽</span>
+          <span class="stat-lbl">по плану ₽</span>
         </div>
       </div>
     </div>
   `;
+
+  keepRevealed(hub, hubRendered);
+  hubRendered = true;
 
   document.getElementById("todo-hub-btn")?.addEventListener("click", () => {
     document.querySelector('[data-nav="todo"]')?.click();
@@ -377,180 +336,181 @@ function renderHub() {
   updateTodoBadges();
 }
 
-function renderPlanStep(day, step, si) {
-  const ticketId = step.link ? step.ticketId || `${day.id}-s${si}` : null;
-  const needsTicket = ticketId && !isTicketBought(ticketId);
-  return wrapSwipeRow(
-    `step:${day.id}:${si}`,
-    `
-      <div class="step${needsTicket ? " step--needs-ticket" : ""}" style="animation-delay:${si * 0.05}s">
-        <div class="step-head">
-          <span class="step-time">${step.time || "—"}</span>
-          <span class="step-title">${step.title}</span>
-          ${step.transport ? `<span class="step-transport" data-t="${step.transport}">${TRANSPORT_LABEL[step.transport] || step.transport}</span>` : ""}
-        </div>
-        ${step.detail ? `<p class="step-detail">${step.detail}</p>` : ""}
-        ${step.address ? `<p class="step-address">${step.address}</p>` : ""}
-        ${step.cost != null ? `<p class="step-cost">${fmtMoney(step.cost)}${step.costNote ? ` · ${step.costNote}` : ""}</p>` : ""}
-        ${
-          step.tips?.length
-            ? `<ul class="step-tips">${step.tips.map((t) => `<li>${t}</li>`).join("")}</ul>`
-            : ""
-        }
-        <div class="step-actions">
-          ${
-            step.lat != null
-              ? `<a class="btn-link" href="${yandexMap(step.lat, step.lon, step.title)}" target="_blank" rel="noopener">Карта</a>`
-              : ""
-          }
-          ${
-            step.link
-              ? `<a class="btn-link${needsTicket ? " btn-link-urgent" : ""}" href="${step.link}" target="_blank" rel="noopener">Билеты</a>`
-              : ""
-          }
-        </div>
-      </div>
-    `,
-    "swipe-row--step",
-  );
-}
+let planRendered = false;
 
 function renderPlan() {
   const container = document.getElementById("plan-days");
   const today = new Date().toISOString().slice(0, 10);
 
+  // Сохраняем, какие дни были раскрыты — иначе любой чекбокс схлопывает план.
+  const openIds = new Set(
+    Array.from(container.querySelectorAll(".day-card[open]")).map((el) => el.dataset.dayId),
+  );
+
   container.innerHTML = TRIP.days
     .map((day, idx) => {
-      if (isHidden(`day:${day.id}`)) return "";
-      const visibleSteps = day.steps
-        .map((step, si) => ({ step, si }))
-        .filter(({ si }) => !isHidden(`step:${day.id}:${si}`));
-      if (!visibleSteps.length) return "";
+      const wasOpen = planRendered
+        ? openIds.has(day.id)
+        : day.date === today || idx === 0;
+      const steps = day.steps
+        .map((step, si) => {
+          const ticketId = step.link ? step.ticketId || `${day.id}-s${si}` : null;
+          const needsTicket = ticketId && !isTicketBought(ticketId);
+          return `
+        <div class="step${needsTicket ? " step--needs-ticket" : ""}">
+          <div class="step-head">
+            <span class="step-time">${esc(step.time || "—")}</span>
+            <span class="step-title">${esc(step.title)}</span>
+            ${step.transport ? `<span class="step-transport" data-t="${esc(step.transport)}">${esc(TRANSPORT_LABEL[step.transport] || step.transport)}</span>` : ""}
+          </div>
+          ${step.detail ? `<p class="step-detail">${esc(step.detail)}</p>` : ""}
+          ${step.address ? `<p class="step-address">${esc(step.address)}</p>` : ""}
+          ${step.cost != null ? `<p class="step-cost">${fmtMoney(step.cost)}${step.costNote ? ` · ${esc(step.costNote)}` : ""}</p>` : ""}
+          ${
+            step.tips?.length
+              ? `<ul class="step-tips">${step.tips.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>`
+              : ""
+          }
+          <div class="step-actions">
+            ${
+              step.lat != null
+                ? `<a class="btn-link" href="${yandexMap(step.lat, step.lon)}" target="_blank" rel="noopener">Карта</a>`
+                : ""
+            }
+            ${
+              step.link
+                ? `<a class="btn-link${needsTicket ? " btn-link-urgent" : ""}" href="${esc(step.link)}" target="_blank" rel="noopener">Билеты</a>`
+                : ""
+            }
+          </div>
+        </div>
+      `;
+        })
+        .join("");
 
-      const open = day.date === today || idx === 0 ? " open" : "";
-      const steps = visibleSteps.map(({ step, si }) => renderPlanStep(day, step, si)).join("");
-
-      return wrapSwipeRow(
-        `day:${day.id}`,
-        `
-        <details class="card day-card reveal"${open}>
+      return `
+        <details class="card day-card reveal" data-day-id="${esc(day.id)}"${wasOpen ? " open" : ""}>
           <summary>
             <div class="day-date-badge" aria-hidden="true">
               <span class="day-date-num">${fmtDayNum(day.date)}</span>
               <span class="day-date-mon">${fmtMonthShort(day.date)}</span>
             </div>
             <div class="day-meta">
-              <span class="day-label">${day.label}</span>
-              <span class="day-summary">${day.weekday} · ${day.summary}</span>
+              <span class="day-label">${esc(day.label)}</span>
+              <span class="day-summary">${esc(day.weekday)} · ${esc(day.summary)}</span>
             </div>
           </summary>
           <div class="day-body">
             <div class="timeline">${steps}</div>
           </div>
         </details>
-      `,
-        "swipe-row--day",
-      );
+      `;
     })
     .join("");
+
+  keepRevealed(container, planRendered);
+  planRendered = true;
 }
 
 function renderTicketsAndHotel() {
   const ticketsEl = document.getElementById("tickets-block");
   ticketsEl.innerHTML = TRIP.tickets
-    .filter((t) => !isHidden(`ticket:${t.id}`))
     .map((t) => {
       const bought = isTicketBought(t.id);
-      return wrapSwipeRow(
-        `ticket:${t.id}`,
-        `
+      return `
     <div class="ticket-card${bought ? " ticket-card--bought" : " ticket-card--pending"}">
-      <div class="ticket-route">${t.label}</div>
-      <div class="ticket-meta">${t.weekday ? t.weekday + " · " : ""}${fmtDate(t.date)} · ${t.train}</div>
-      <div class="ticket-meta">${t.from} → ${t.to}</div>
-      <div class="ticket-meta">Отправление ${t.depart} · прибытие ${t.arrive}</div>
-      <div class="ticket-meta">${t.seats}</div>
-      <div class="ticket-meta" style="color:var(--accent);font-weight:700;margin-top:8px">${fmtMoney(t.cost)} ${t.costNote || ""}</div>
-      <div class="step-actions" style="margin-top:10px">
+      <div class="ticket-route">${esc(t.label)}</div>
+      <div class="ticket-meta">${t.weekday ? esc(t.weekday) + " · " : ""}${fmtDate(t.date)} · ${esc(t.train)}</div>
+      <div class="ticket-meta">${esc(t.from)} → ${esc(t.to)}</div>
+      <div class="ticket-meta">Отправление ${esc(t.depart)} · прибытие ${esc(t.arrive)}</div>
+      <div class="ticket-meta">${esc(t.seats)}</div>
+      <div class="ticket-meta ticket-price">${fmtMoney(t.cost)} ${esc(t.costNote || "")}</div>
+      <div class="step-actions">
         ${
           bought
             ? `<span class="ticket-done-tag">✓ Куплено</span>`
-            : `<a class="btn-link btn-link-urgent" href="${t.link}" target="_blank" rel="noopener">Купить на РЖД</a>`
+            : `<a class="btn-link btn-link-urgent" href="${esc(t.link)}" target="_blank" rel="noopener">Купить на РЖД</a>`
         }
       </div>
     </div>
-  `,
-        "swipe-row--ticket",
-      );
+  `;
     })
     .join("");
 
   const h = TRIP.hotel;
-  if (isHidden("hotel:main")) {
-    document.getElementById("hotel-block").innerHTML = "";
-    return;
-  }
-
-  document.getElementById("hotel-block").innerHTML = wrapSwipeRow(
-    "hotel:main",
-    `
+  const phoneDigits = String(h.phone || "").replace(/[^\d+]/g, "");
+  document.getElementById("hotel-block").innerHTML = `
     <div class="hotel-block">
-      <div class="hotel-name">${h.name}</div>
-      <div class="hotel-row"><b>Адрес:</b> ${h.address}</div>
-      <div class="hotel-row"><b>Заезд:</b> ${fmtDate(h.checkIn)} с ${h.checkInFrom}${h.lateCheckIn ? " (ночной заезд)" : ""}</div>
+      <div class="hotel-name">${esc(h.name)}</div>
+      <div class="hotel-row"><b>Адрес:</b> ${esc(h.address)}</div>
+      <div class="hotel-row"><b>Заезд:</b> ${fmtDate(h.checkIn)} с ${esc(h.checkInFrom)}${h.lateCheckIn ? " (ночной заезд)" : ""}</div>
       <div class="hotel-row"><b>Выезд:</b> ${fmtDate(h.checkOut)}</div>
-      <div class="hotel-row"><b>Бронь:</b> ${h.bookingRef}</div>
-      <div class="hotel-row"><b>Телефон:</b> <a href="tel:${h.phone.replace(/\s/g, "")}">${h.phone}</a></div>
+      <div class="hotel-row"><b>Бронь:</b> ${esc(h.bookingRef)}</div>
+      <div class="hotel-row"><b>Телефон:</b> ${
+        phoneDigits.length > 4
+          ? `<a href="tel:${esc(phoneDigits)}">${esc(h.phone)}</a>`
+          : esc(h.phone)
+      }</div>
       <div class="hotel-row"><b>Стоимость:</b> ${fmtMoney(h.costPerNight)} × ${h.nights} = ${fmtMoney(h.costPerNight * h.nights)}</div>
-      <div class="hotel-row">${h.notes}</div>
-      <div class="step-actions" style="margin-top:12px">
-        <a class="btn-link" href="${yandexMap(h.lat, h.lon, h.name)}" target="_blank" rel="noopener">Яндекс.Карты</a>
+      <div class="hotel-row">${esc(h.notes)}</div>
+      <div class="step-actions">
+        <a class="btn-link" href="${yandexMap(h.lat, h.lon)}" target="_blank" rel="noopener">Яндекс.Карты</a>
       </div>
     </div>
-  `,
-    "swipe-row--hotel",
-  );
+  `;
 }
 
 function renderBudget() {
   const rows = document.getElementById("budget-rows");
-  const hotelTotal = isHidden("hotel:main") ? 0 : TRIP.hotel.costPerNight * TRIP.hotel.nights;
-  const ticketTotal = TRIP.tickets
-    .filter((t) => !isHidden(`ticket:${t.id}`))
-    .reduce((s, t) => s + (t.cost || 0), 0);
+  const hotelTotal = TRIP.hotel.costPerNight * TRIP.hotel.nights;
+  const ticketTotal = TRIP.tickets.reduce((s, t) => s + (t.cost || 0), 0);
   const dailyTotal = sumStepCosts();
 
   const items = [
-    { key: "budget:rollup:hotel", label: "Отель", amount: hotelTotal, note: `${TRIP.hotel.nights} ночей` },
-    { key: "budget:rollup:trains", label: "Ж/д билеты", amount: ticketTotal, note: "туда + обратно" },
-    ...TRIP.budgetFixed
-      .filter((b) => !["hotel", "train"].includes(b.id))
-      .map((b) => ({ key: `budget:${b.id}`, ...b })),
-    {
-      key: "budget:rollup:daily",
-      label: "По дням (транспорт, еда, входы)",
-      amount: dailyTotal,
-      note: "из расписания",
-    },
-  ].filter((i) => !isHidden(i.key));
+    { label: "Отель", amount: hotelTotal, note: `${TRIP.hotel.nights} ночей` },
+    { label: "Ж/д билеты", amount: ticketTotal, note: "туда + обратно" },
+    ...TRIP.budgetFixed.filter((b) => !["hotel", "train"].includes(b.id)),
+    { label: "По дням (транспорт, еда, входы)", amount: dailyTotal, note: "из расписания" },
+  ];
 
   rows.innerHTML = items
     .map(
-      (i) => wrapSwipeRow(
-        i.key,
-        `
+      (i) => `
     <div class="budget-row">
-      <span>${i.label}</span>
+      <span>${esc(i.label)}</span>
       <span class="budget-amt">${fmtMoney(i.amount)}</span>
-      ${i.note ? `<span class="budget-note">${i.note}</span>` : ""}
+      ${i.note ? `<span class="budget-note">${esc(i.note)}</span>` : ""}
     </div>
   `,
-        "swipe-row--budget",
-      ),
     )
     .join("");
 
-  document.getElementById("budget-total-val").textContent = fmtMoney(displayBudget());
+  const planned = displayBudget();
+  const target = budgetTarget();
+  document.getElementById("budget-total-val").textContent = fmtMoney(planned);
+
+  const compareEl = document.getElementById("budget-compare");
+  if (!compareEl) return;
+
+  if (target == null) {
+    compareEl.innerHTML = "";
+    return;
+  }
+
+  const diff = planned - target;
+  if (diff > 0) {
+    compareEl.innerHTML = `
+      <span class="budget-compare-lbl">Цель ${fmtMoney(target)}</span>
+      <span class="budget-compare-val budget-compare-val--over">Сверх цели ${fmtMoney(diff)}</span>`;
+  } else if (diff < 0) {
+    compareEl.innerHTML = `
+      <span class="budget-compare-lbl">Цель ${fmtMoney(target)}</span>
+      <span class="budget-compare-val budget-compare-val--under">Запас ${fmtMoney(-diff)}</span>`;
+  } else {
+    compareEl.innerHTML = `
+      <span class="budget-compare-lbl">Цель ${fmtMoney(target)}</span>
+      <span class="budget-compare-val">Ровно в цель</span>`;
+  }
 }
 
 function renderTodoSummary() {
@@ -574,7 +534,7 @@ function renderTodoSummary() {
         <span class="todo-summary-lbl">подготовить</span>
       </div>
     </div>
-    <p class="todo-summary-hint">Галочка — готово · свайп влево — <span class="todo-summary-delete">удалить</span></p>
+    <p class="todo-summary-hint">Отметьте галочкой — пункт исчезнет с анимацией</p>
   `;
 }
 
@@ -604,7 +564,7 @@ function renderOfficialLinks(item) {
       ${links
         .map(
           (l) =>
-            `<a class="btn-link btn-link-site" href="${l.href}" target="_blank" rel="noopener">${l.label}</a>`,
+            `<a class="btn-link btn-link-site" href="${esc(l.href)}" target="_blank" rel="noopener">${esc(l.label)}</a>`,
         )
         .join("")}
     </div>`;
@@ -613,24 +573,19 @@ function renderOfficialLinks(item) {
 function renderMustSee() {
   const checks = loadChecks();
   document.getElementById("must-see").innerHTML = TRIP.mustSee
-    .filter((item) => !isHidden(`must:${item.id}`))
     .map((item) => {
       const done = checks["must-" + item.id] || item.done;
       const links = renderOfficialLinks(item);
-      return wrapSwipeRow(
-        `must:${item.id}`,
-        `
+      return `
       <div class="visit-item${links ? " visit-item--has-links" : ""}">
         <label class="check-item${done ? " done" : ""}">
-          <input type="checkbox" data-id="must-${item.id}" ${done ? "checked" : ""}>
-          <span class="check-text">${item.name}</span>
-          <span class="check-tag">${item.day}</span>
+          <input type="checkbox" data-id="must-${esc(item.id)}" ${done ? "checked" : ""}>
+          <span class="check-text">${esc(item.name)}</span>
+          <span class="check-tag">${esc(item.day)}</span>
         </label>
         ${links}
       </div>
-    `,
-        "swipe-row--visit",
-      );
+    `;
     })
     .join("");
 }
@@ -707,10 +662,16 @@ function loadLeaflet() {
 function initMap() {
   const mapEl = document.getElementById("map");
   if (!mapEl || mapEl.dataset.state === "error") return;
-  if (mapInitStarted && mapInstance) {
-    setTimeout(() => mapInstance.invalidateSize(), 120);
+
+  if (mapInstance) {
+    requestAnimationFrame(() => {
+      mapInstance.invalidateSize();
+      tourAnimator?.refit?.();
+    });
     return;
   }
+  // Загрузка уже идёт — не затираем контейнер повторным статусом.
+  if (mapInitStarted) return;
 
   mapInitStarted = true;
   showMapStatus(mapEl, "Загрузка карты…");
@@ -737,9 +698,13 @@ function initMap() {
         tourAnimator = initTourAnimation(mapInstance);
       }
 
-      setTimeout(() => mapInstance.invalidateSize(), 200);
+      setTimeout(() => {
+        mapInstance.invalidateSize();
+        tourAnimator?.refit?.();
+      }, 220);
     })
     .catch(() => {
+      mapInitStarted = false;
       mapEl.dataset.state = "error";
       showMapStatus(
         mapEl,
@@ -760,11 +725,10 @@ function bindTodoPanel() {
       saveChecks(checks);
 
       if (doInput.checked) {
-        dismissTaskRow(doInput.closest("[data-task-wrap]"));
-        setTimeout(() => {
+        dismissTaskRow(doInput.closest("[data-task-wrap]")).then(() => {
           renderTodoDo();
           refreshAfterTodoChange();
-        }, 460);
+        });
       } else {
         renderTodoPanel();
         refreshAfterTodoChange();
@@ -786,11 +750,36 @@ function bindTodoPanel() {
 }
 
 function bindNav() {
-  document.querySelectorAll(".nav-btn").forEach((btn) => {
+  const buttons = Array.from(document.querySelectorAll(".nav-btn"));
+
+  buttons.forEach((btn, i) => {
     btn.addEventListener("click", () => {
       applyPanelSwitch(btn.dataset.nav, { scroll: "smooth" });
     });
+    btn.addEventListener("keydown", (e) => {
+      let next = null;
+      if (e.key === "ArrowRight") next = buttons[(i + 1) % buttons.length];
+      else if (e.key === "ArrowLeft") next = buttons[(i - 1 + buttons.length) % buttons.length];
+      else if (e.key === "Home") next = buttons[0];
+      else if (e.key === "End") next = buttons[buttons.length - 1];
+      if (!next) return;
+      e.preventDefault();
+      next.focus();
+      applyPanelSwitch(next.dataset.nav, { scroll: "smooth" });
+    });
   });
+
+  syncNavIndicator();
+  window.addEventListener("resize", syncNavIndicator, { passive: true });
+}
+
+/** Золотая «пилюля» под активной вкладкой едет плавно, а не перескакивает. */
+function syncNavIndicator() {
+  const nav = document.querySelector(".bottom-nav");
+  if (!nav) return;
+  const idx = Math.max(0, PANEL_ORDER.indexOf(activePanel));
+  nav.style.setProperty("--nav-index", String(idx));
+  nav.style.setProperty("--nav-count", String(PANEL_ORDER.length));
 }
 
 function getNextPanel(current) {
@@ -798,32 +787,61 @@ function getNextPanel(current) {
   return PANEL_ORDER[(idx + 1) % PANEL_ORDER.length];
 }
 
-function refreshPanelsContent() {
-  renderHero();
-  renderHub();
-  renderPlan();
-  renderTicketsAndHotel();
-  renderBudget();
-  renderTodoPanel();
-  observeReveals();
+/** Показ появляющихся блоков: короткий каскад сверху вниз. */
+function staggerReveals(panel) {
+  if (!panel) return;
+  const items = panel.querySelectorAll(".reveal");
+  items.forEach((el, i) => el.style.setProperty("--reveal-i", String(Math.min(i, 6))));
 }
 
-function applyPanelSwitch(panelId, { scroll = "auto" } = {}) {
+function applyPanelSwitch(panelId, { scroll = "auto", animate = true } = {}) {
   if (panelId === activePanel) return;
+
+  const prevIdx = PANEL_ORDER.indexOf(activePanel);
+  const nextIdx = PANEL_ORDER.indexOf(panelId);
+  const dir = nextIdx > prevIdx ? "forward" : "back";
+
   activePanel = panelId;
+  document.body.dataset.panel = panelId;
+
   document.querySelectorAll(".nav-btn").forEach((b) => {
-    b.classList.toggle("active", b.dataset.nav === activePanel);
+    const isActive = b.dataset.nav === activePanel;
+    b.classList.toggle("active", isActive);
+    b.setAttribute("aria-selected", isActive ? "true" : "false");
+    b.tabIndex = isActive ? 0 : -1;
   });
+
+  const nextPanel = document.querySelector(`.panel[data-panel="${panelId}"]`);
+
   document.querySelectorAll(".panel").forEach((p) => {
+    p.classList.remove("panel--forward", "panel--back");
     p.classList.toggle("active", p.dataset.panel === activePanel);
+    p.hidden = p.dataset.panel !== activePanel;
   });
+
+  if (nextPanel && animate && !prefersReducedMotion()) {
+    staggerReveals(nextPanel);
+    nextPanel.classList.add(dir === "forward" ? "panel--forward" : "panel--back");
+    nextPanel.addEventListener(
+      "animationend",
+      () => nextPanel.classList.remove("panel--forward", "panel--back"),
+      { once: true },
+    );
+  }
+
+  syncNavIndicator();
+  observeReveals();
+
   if (activePanel === "map") {
     initMap();
-    setTimeout(() => mapInstance?.invalidateSize(), 120);
+    setTimeout(() => {
+      mapInstance?.invalidateSize();
+      tourAnimator?.refit?.();
+    }, 180);
   } else {
     tourAnimator?.pause?.();
   }
-  window.scrollTo({ top: 0, behavior: scroll });
+  window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : scroll });
 }
 
 function playSpbSwipeTransition(nextPanel) {
@@ -837,8 +855,7 @@ function playSpbSwipeTransition(nextPanel) {
   if (label) label.textContent = PANEL_TITLES[nextPanel] || nextPanel;
 
   if (reduced || !overlay) {
-    refreshPanelsContent();
-    applyPanelSwitch(nextPanel);
+    applyPanelSwitch(nextPanel, { animate: false });
     swipeBusy = false;
     return;
   }
@@ -853,14 +870,13 @@ function playSpbSwipeTransition(nextPanel) {
   if (navigator.vibrate) navigator.vibrate(10);
 
   window.setTimeout(() => {
-    refreshPanelsContent();
     if (leavingPanel) {
       leavingPanel.classList.remove("active", "spb-enter");
       leavingPanel.classList.add("spb-exit");
     }
 
     window.setTimeout(() => {
-      applyPanelSwitch(nextPanel);
+      applyPanelSwitch(nextPanel, { animate: false });
       document.querySelectorAll(".panel").forEach((p) => p.classList.remove("spb-exit"));
       const enteringPanel = document.querySelector(`.panel[data-panel="${nextPanel}"]`);
       if (enteringPanel) enteringPanel.classList.add("spb-enter");
@@ -884,7 +900,6 @@ function bindEdgeSwipeNav() {
     "touchstart",
     (e) => {
       if (swipeBusy || e.touches.length !== 1) return;
-      if (e.target.closest(".swipe-row")) return;
       const t = e.touches[0];
       if (t.clientX < window.innerWidth - EDGE_SWIPE_ZONE) return;
       if (e.target.closest("input, textarea, select, button, a, .leaflet-control")) return;
@@ -945,119 +960,14 @@ function bindEdgeSwipeNav() {
   document.addEventListener("touchcancel", resetEdgeTouch, { passive: true });
 }
 
-function bindSwipeDelete() {
-  document.addEventListener("click", (e) => {
-    const btn = e.target.closest(".swipe-row__delete");
-    if (btn) {
-      e.preventDefault();
-      const row = btn.closest(".swipe-row");
-      const key = row?.dataset.hideKey;
-      if (row && key) removeSwipeRow(row, key);
-      return;
-    }
-    if (!e.target.closest(".swipe-row") && openSwipeRow) closeSwipeRow(openSwipeRow);
-  });
-
-  document.addEventListener(
-    "touchstart",
-    (e) => {
-      if (e.touches.length !== 1) return;
-      const surface = e.target.closest(".swipe-row__surface");
-      if (!surface) return;
-      if (e.target.closest("a, button, input, .swipe-row__delete")) return;
-
-      const t = e.touches[0];
-      if (t.clientX > window.innerWidth - EDGE_SWIPE_ZONE) return;
-
-      const row = surface.closest(".swipe-row");
-      if (!row) return;
-
-      if (openSwipeRow && openSwipeRow !== row) closeSwipeRow(openSwipeRow);
-
-      swipeRowTouch = {
-        row,
-        surface,
-        startX: t.clientX,
-        startY: t.clientY,
-        baseX: row.classList.contains("is-open") ? -SWIPE_DELETE_W : 0,
-        moved: false,
-      };
-    },
-    { passive: true },
-  );
-
-  document.addEventListener(
-    "touchmove",
-    (e) => {
-      if (!swipeRowTouch) return;
-      const t = e.touches[0];
-      const dx = t.clientX - swipeRowTouch.startX;
-      const dy = t.clientY - swipeRowTouch.startY;
-
-      if (!swipeRowTouch.moved && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 10) {
-        swipeRowTouch = null;
-        return;
-      }
-      if (Math.abs(dx) < 4) return;
-
-      swipeRowTouch.moved = true;
-      const x = Math.max(-SWIPE_DELETE_W, Math.min(0, swipeRowTouch.baseX + dx));
-      swipeRowTouch.surface.style.transform = `translateX(${x}px)`;
-      e.preventDefault();
-    },
-    { passive: false },
-  );
-
-  document.addEventListener(
-    "touchend",
-    (e) => {
-      if (!swipeRowTouch) return;
-      const { row, surface, startX, baseX, moved } = swipeRowTouch;
-      const t = e.changedTouches[0];
-      const dx = t.clientX - startX;
-      swipeRowTouch = null;
-
-      if (!moved) return;
-
-      surface.style.removeProperty("transform");
-      const finalX = baseX + dx;
-
-      if (finalX <= -SWIPE_DELETE_OPEN) {
-        row.classList.add("is-open");
-        openSwipeRow = row;
-      } else {
-        closeSwipeRow(row);
-      }
-
-      const summary = surface.querySelector("summary");
-      if (summary) {
-        summary.addEventListener(
-          "click",
-          (ev) => {
-            ev.preventDefault();
-            ev.stopImmediatePropagation();
-          },
-          { capture: true, once: true },
-        );
-      }
-    },
-    { passive: true },
-  );
-
-  document.addEventListener(
-    "touchcancel",
-    () => {
-      if (!swipeRowTouch) return;
-      swipeRowTouch.surface.style.removeProperty("transform");
-      swipeRowTouch = null;
-    },
-    { passive: true },
-  );
-}
-
+/**
+ * Затемнение фона по мере прокрутки. Меняем только opacity —
+ * transform на fixed-фоне вызывает дорогую перерисовку на iOS.
+ */
 function bindScrollGlass() {
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  if (prefersReducedMotion()) return;
   let ticking = false;
+  let last = -1;
   window.addEventListener(
     "scroll",
     () => {
@@ -1066,7 +976,11 @@ function bindScrollGlass() {
       requestAnimationFrame(() => {
         const max = document.documentElement.scrollHeight - window.innerHeight;
         const p = max > 0 ? Math.min(1, window.scrollY / max) : 0;
-        document.documentElement.style.setProperty("--app-bg-scroll", String(p * 0.82));
+        const value = Math.round(p * 0.82 * 50) / 50;
+        if (value !== last) {
+          last = value;
+          document.documentElement.style.setProperty("--app-bg-scroll", String(value));
+        }
         ticking = false;
       });
     },
@@ -1085,24 +999,142 @@ function observeReveals() {
           }
         });
       },
-      { threshold: 0.12, rootMargin: "0px 0px -40px 0px" },
+      { threshold: 0.08, rootMargin: "0px 0px -32px 0px" },
     );
   }
   document.querySelectorAll(".reveal:not(.visible)").forEach((el) => revealObserver.observe(el));
 }
 
-function bindReveal() {
-  observeReveals();
+/**
+ * Плавное раскрытие дня. <details> сам по себе открывается рывком,
+ * поэтому высоту анимируем вручную и придерживаем закрытие до конца анимации.
+ */
+function bindDayAccordion() {
+  const container = document.getElementById("plan-days");
+  if (!container) return;
+
+  container.addEventListener("click", (e) => {
+    const summary = e.target.closest("summary");
+    if (!summary || !container.contains(summary)) return;
+
+    const details = summary.parentElement;
+    const body = details.querySelector(".day-body");
+    if (!body) return;
+
+    if (prefersReducedMotion()) return;
+    if (details.dataset.animating === "1") {
+      e.preventDefault();
+      return;
+    }
+
+    e.preventDefault();
+    details.dataset.animating = "1";
+
+    const styles = getComputedStyle(body);
+    const padTop = styles.paddingTop;
+    const padBottom = styles.paddingBottom;
+    const open = details.open;
+
+    if (!open) details.open = true;
+
+    const full = body.scrollHeight;
+    const collapsed = [{ height: "0px", paddingTop: "0px", paddingBottom: "0px", opacity: 0 }];
+    const expanded = [{ height: `${full}px`, paddingTop: padTop, paddingBottom: padBottom, opacity: 1 }];
+
+    const anim = body.animate(open ? expanded.concat(collapsed) : collapsed.concat(expanded), {
+      duration: open ? 240 : 320,
+      easing: open ? "cubic-bezier(0.4, 0, 1, 1)" : "cubic-bezier(0.22, 1, 0.36, 1)",
+    });
+
+    if (!open) animateStepsIn(body);
+
+    anim.onfinish = () => {
+      if (open) details.open = false;
+      details.dataset.animating = "0";
+    };
+    anim.oncancel = () => {
+      details.dataset.animating = "0";
+    };
+  });
+}
+
+function animateStepsIn(body) {
+  const steps = body.querySelectorAll(".step");
+  steps.forEach((step, i) => {
+    step.animate(
+      [
+        { opacity: 0, transform: "translateX(-10px)" },
+        { opacity: 1, transform: "translateX(0)" },
+      ],
+      {
+        duration: 340,
+        delay: Math.min(i, 8) * 45,
+        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+        fill: "backwards",
+      },
+    );
+  });
+}
+
+function showUpdateToast(worker) {
+  if (document.getElementById("update-toast")) return;
+  const toast = document.createElement("div");
+  toast.id = "update-toast";
+  toast.className = "update-toast";
+  toast.setAttribute("role", "status");
+  toast.innerHTML = `
+    <span class="update-toast-text">План обновился</span>
+    <button type="button" class="update-toast-btn">Обновить</button>`;
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add("visible"));
+  toast.querySelector(".update-toast-btn").addEventListener("click", () => {
+    worker.postMessage({ type: "SKIP_WAITING" });
+  });
 }
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator) || location.protocol === "file:") return;
+
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    navigator.serviceWorker
+      .register("./sw.js")
+      .then((reg) => {
+        if (reg.waiting && navigator.serviceWorker.controller) showUpdateToast(reg.waiting);
+        reg.addEventListener("updatefound", () => {
+          const next = reg.installing;
+          if (!next) return;
+          next.addEventListener("statechange", () => {
+            if (next.state === "installed" && navigator.serviceWorker.controller) {
+              showUpdateToast(next);
+            }
+          });
+        });
+      })
+      .catch(() => {});
+
+    let reloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloading) return;
+      reloading = true;
+      window.location.reload();
+    });
+  });
+}
+
+/** Показываем сразу то, что уже в кадре на активной вкладке — без мигания. */
+function revealInitialViewport() {
+  const panel = document.querySelector(".panel.active");
+  const scope = [document.getElementById("hub"), panel].filter(Boolean);
+  scope.forEach((root) => {
+    root.querySelectorAll(".reveal:not(.visible)").forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.height > 0 && r.top < window.innerHeight * 0.9) el.classList.add("visible");
+    });
   });
 }
 
 function init() {
+  document.body.dataset.panel = activePanel;
   renderHero();
   renderHub();
   renderPlan();
@@ -1111,15 +1143,12 @@ function init() {
   renderTodoPanel();
   bindNav();
   bindEdgeSwipeNav();
-  bindSwipeDelete();
   bindTodoPanel();
+  bindDayAccordion();
   bindScrollGlass();
-  bindReveal();
+  observeReveals();
   registerServiceWorker();
-  requestAnimationFrame(() => document.querySelectorAll(".reveal:not(.visible)").forEach((el) => {
-    const r = el.getBoundingClientRect();
-    if (r.top < window.innerHeight) el.classList.add("visible");
-  }));
+  requestAnimationFrame(revealInitialViewport);
 }
 
 document.addEventListener("DOMContentLoaded", init);

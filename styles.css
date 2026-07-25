@@ -12,8 +12,8 @@
   --gold-soft: rgba(201, 162, 39, 0.22);
   --burgundy: #6b2d3e;
   --text: #f0f4fa;
-  --muted: #9eb3cc;
-  --label: #d4e2f2;
+  --muted: #b0c3d8;
+  --label: #dbe7f5;
   --glass-bg: rgba(255, 255, 255, 0.11);
   --glass-border: rgba(255, 255, 255, 0.22);
   --glass-highlight: rgba(255, 255, 255, 0.35);
@@ -21,10 +21,11 @@
   --font-display: "Playfair Display", Georgia, serif;
   --font-body: "Manrope", system-ui, sans-serif;
   --app-bg-scroll: 0;
-  --nav-h: 72px;
+  --nav-h: 76px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
-  --swipe-delete-w: 96px;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
   accent-color: var(--gold);
 }
 
@@ -54,13 +55,18 @@ body {
   touch-action: manipulation;
 }
 
+/*
+ * Фон закреплён элементом с position:fixed — без background-attachment:fixed,
+ * который на iOS Safari даёт джиттер при прокрутке. Меняем только opacity.
+ */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -2;
   pointer-events: none;
-  background:
+  background-color: var(--neva-deep);
+  background-image:
     linear-gradient(
       175deg,
       rgba(15, 40, 71, 0.78) 0%,
@@ -69,14 +75,16 @@ body::before {
     ),
     radial-gradient(ellipse 120% 55% at 50% -15%, rgba(200, 217, 240, 0.22) 0%, transparent 58%),
     radial-gradient(ellipse 90% 40% at 85% 10%, rgba(180, 200, 230, 0.12) 0%, transparent 50%),
-    url("media/karelia-bg-sm.jpg") center center / cover no-repeat;
-  transform: scale(calc(1 + var(--app-bg-scroll) * 0.04));
-  transition: transform 0.2s ease;
+    url("media/karelia-bg-sm.jpg");
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
 }
 
-@supports (background-attachment: fixed) {
+/* WebP — 61 КБ вместо 144 КБ; браузеры без поддержки берут jpg выше. */
+@supports (background-image: image-set(url("a.webp") type("image/webp") 1x)) {
   body::before {
-    background:
+    background-image:
       linear-gradient(
         175deg,
         rgba(15, 40, 71, 0.78) 0%,
@@ -85,7 +93,10 @@ body::before {
       ),
       radial-gradient(ellipse 120% 55% at 50% -15%, rgba(200, 217, 240, 0.22) 0%, transparent 58%),
       radial-gradient(ellipse 90% 40% at 85% 10%, rgba(180, 200, 230, 0.12) 0%, transparent 50%),
-      url("media/karelia-bg-sm.jpg") center center / cover no-repeat fixed;
+      image-set(
+        url("media/karelia-bg.webp") type("image/webp") 1x,
+        url("media/karelia-bg-sm.jpg") type("image/jpeg") 1x
+      );
   }
 }
 
@@ -117,10 +128,62 @@ body::after {
   padding: calc(var(--safe-top) + 8px) max(16px, env(safe-area-inset-left)) 28px max(16px, env(safe-area-inset-right));
 }
 
+.skip-link {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translate(-50%, -140%);
+  z-index: 200;
+  padding: 12px 20px;
+  border-radius: 0 0 14px 14px;
+  background: var(--neva-mid);
+  border: 1px solid var(--gold);
+  color: var(--cream);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 0.25s var(--ease-out);
+}
+
+.skip-link:focus-visible {
+  transform: translate(-50%, 0);
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 2px;
+}
+
 .hero {
   text-align: center;
-  padding: 28px 12px 20px;
-  animation: heroIn 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+  padding: 20px 12px 14px;
+  animation: heroIn 0.85s var(--ease-out) both;
+  transition: padding 0.38s var(--ease-out);
+}
+
+/*
+ * Обложка нужна на «Плане». На остальных вкладках она съедала
+ * пол-экрана до полезного контента — там оставляем узкую шапку.
+ */
+body:not([data-panel="plan"]) .hero {
+  padding: 12px 12px 6px;
+}
+
+body:not([data-panel="plan"]) .hero-ornament,
+body:not([data-panel="plan"]) .hero-city,
+body:not([data-panel="plan"]) .hero-sub {
+  display: none;
+}
+
+body:not([data-panel="plan"]) .hero-script {
+  font-size: 1.3rem;
+  letter-spacing: 0.01em;
+}
+
+body:not([data-panel="plan"]) .hero-dates {
+  margin-top: 2px;
+  font-size: 0.82rem;
+}
+
+body:not([data-panel="plan"]) #hub {
+  display: none;
 }
 
 .hero-ornament {
@@ -128,7 +191,7 @@ body::after {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   opacity: 0.85;
 }
 
@@ -148,12 +211,13 @@ body::after {
 
 .hero-script {
   font-family: var(--font-display);
-  font-size: clamp(1.85rem, 8vw, 2.5rem);
+  font-size: clamp(1.7rem, 7.4vw, 2.35rem);
   font-weight: 600;
   font-style: italic;
   color: var(--cream);
   line-height: 1.15;
   letter-spacing: 0.02em;
+  transition: font-size 0.38s var(--ease-out);
 }
 
 .hero-city {
@@ -167,7 +231,7 @@ body::after {
 }
 
 .hero-dates {
-  margin-top: 12px;
+  margin-top: 8px;
   font-size: 0.92rem;
   font-weight: 700;
   color: var(--gold-bright);
@@ -182,7 +246,7 @@ body::after {
 
 .card {
   border-radius: 20px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   position: relative;
   overflow: hidden;
   background: var(--glass-bg);
@@ -221,15 +285,15 @@ body::after {
 .hub-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  padding: 18px 16px;
+  gap: 8px;
+  padding: 14px 14px;
   position: relative;
   z-index: 1;
 }
 
 .stat {
   text-align: center;
-  padding: 12px 8px;
+  padding: 10px 6px;
   border-radius: 14px;
   background: rgba(15, 40, 71, 0.45);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -247,29 +311,43 @@ body::after {
 .stat-lbl {
   display: block;
   margin-top: 4px;
-  font-size: 0.62rem;
-  letter-spacing: 0.12em;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
 .panel {
   display: none;
-  animation: panelIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .panel.active {
   display: block;
+  animation: panelIn 0.42s var(--ease-out) both;
+}
+
+/* Направление перехода: вперёд по вкладкам — контент приходит справа. */
+.panel.active.panel--forward {
+  animation: panelInRight 0.44s var(--ease-out) both;
+}
+
+.panel.active.panel--back {
+  animation: panelInLeft 0.44s var(--ease-out) both;
+}
+
+.panel:focus {
+  outline: none;
 }
 
 .section-head {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 16px 0 12px;
-  font-size: 0.68rem;
+  margin: 18px 0 12px;
+  font-size: 0.76rem;
   font-weight: 800;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--white-night);
 }
@@ -369,15 +447,21 @@ body::after {
 
 .day-summary {
   font-family: var(--font-body);
-  font-size: 0.76rem;
+  font-size: 0.82rem;
   font-weight: 500;
   color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .day-body {
   padding: 14px 16px 18px;
   position: relative;
   z-index: 1;
+  overflow: hidden;
 }
 
 .timeline {
@@ -395,10 +479,10 @@ body::after {
   border-radius: 2px;
 }
 
+/* Появление шагов запускается из JS при раскрытии дня (Web Animations API). */
 .step {
   position: relative;
   padding: 0 0 18px 34px;
-  animation: stepIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .step:last-child {
@@ -475,9 +559,13 @@ body::after {
 .step-detail,
 .step-address {
   margin-top: 7px;
-  font-size: 0.84rem;
+  font-size: 0.88rem;
   color: var(--muted);
   line-height: 1.5;
+}
+
+.step-address {
+  color: var(--label);
 }
 
 .step-cost {
@@ -534,63 +622,6 @@ body::after {
   color: #ffd0d8;
 }
 
-.ticket-alert {
-  margin-top: 10px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(107, 45, 62, 0.42);
-  border: 1px solid rgba(255, 110, 130, 0.55);
-  max-height: 160px;
-  overflow: hidden;
-  transition:
-    opacity 0.45s ease,
-    max-height 0.45s ease,
-    margin 0.45s ease,
-    padding 0.45s ease,
-    border-color 0.45s ease;
-}
-
-.ticket-alert--hide {
-  opacity: 0;
-  max-height: 0;
-  margin-top: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  border-color: transparent;
-}
-
-.ticket-alert-msg {
-  font-size: 0.82rem;
-  font-weight: 800;
-  color: #ffb4c4;
-  line-height: 1.4;
-}
-
-.ticket-alert-row {
-  margin-top: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-
-.ticket-bought-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--cream);
-  -webkit-tap-highlight-color: transparent;
-}
-
-.ticket-bought-check input {
-  width: 20px;
-  height: 20px;
-  accent-color: #ff6b82;
-}
-
 .btn-link-urgent {
   border-color: rgba(255, 110, 130, 0.7);
   background: rgba(107, 45, 62, 0.55);
@@ -627,63 +658,118 @@ body::after {
 /* --- Вкладка «Дела» --- */
 .todo-hub {
   width: 100%;
-  margin-bottom: 14px;
-  padding: 16px 18px;
+  margin-bottom: 12px;
+  padding: 14px 16px;
   text-align: left;
   cursor: pointer;
   font-family: inherit;
   color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.22);
   -webkit-tap-highlight-color: transparent;
 }
 
-.todo-hub-grid {
+.todo-hub--alert {
+  background:
+    linear-gradient(135deg, rgba(107, 45, 62, 0.55) 0%, rgba(15, 40, 71, 0.72) 100%);
+  border-color: rgba(255, 110, 130, 0.55);
+  box-shadow:
+    var(--card-shadow),
+    0 0 0 1px rgba(255, 110, 130, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  animation: todoHubPulse 2.4s ease-in-out infinite;
+}
+
+.todo-hub--alert:active {
+  transform: scale(0.985);
+}
+
+.todo-hub-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.todo-hub-badge {
+  flex-shrink: 0;
+  min-width: 46px;
+  height: 46px;
+  padding: 0 9px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.todo-hub-cell {
-  text-align: center;
-  padding: 12px 8px;
+  place-items: center;
   border-radius: 14px;
-  background: rgba(15, 40, 71, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.todo-hub-cell--urgent {
-  background: rgba(107, 45, 62, 0.38);
-  border-color: rgba(255, 110, 130, 0.45);
-}
-
-.todo-hub-num {
-  display: block;
   font-family: var(--font-display);
-  font-size: 1.6rem;
+  font-size: 1.4rem;
   font-weight: 700;
-  color: var(--gold-bright);
   font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: linear-gradient(180deg, #ff6b82 0%, #c42848 100%);
+  box-shadow: 0 4px 16px rgba(200, 40, 72, 0.45);
 }
 
-.todo-hub-cell--urgent .todo-hub-num {
-  color: #ffb4c4;
+.todo-hub-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.todo-hub-lbl {
-  display: block;
-  margin-top: 4px;
-  font-size: 0.62rem;
+.todo-hub-title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #ffe0e6;
+  line-height: 1.25;
+}
+
+.todo-hub-sub {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: rgba(255, 200, 210, 0.82);
+  line-height: 1.35;
+}
+
+.todo-hub-go {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 1.1rem;
   font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
+  color: #ffd0d8;
+  background: rgba(255, 110, 130, 0.28);
+  border: 1px solid rgba(255, 150, 165, 0.45);
 }
 
 .todo-hub-cta {
   display: block;
-  margin-top: 12px;
-  font-size: 0.78rem;
-  font-weight: 700;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 110, 130, 0.22);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--gold-bright);
+}
+
+@keyframes todoHubPulse {
+  0%,
+  100% {
+    box-shadow:
+      var(--card-shadow),
+      0 0 0 1px rgba(255, 110, 130, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+  50% {
+    box-shadow:
+      var(--card-shadow),
+      0 0 0 2px rgba(255, 110, 130, 0.45),
+      0 0 24px rgba(255, 80, 110, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
 }
 
 .todo-hub--done {
@@ -768,11 +854,10 @@ body::after {
   z-index: 1;
   overflow: hidden;
   transition:
-    opacity 0.45s ease,
-    max-height 0.45s ease,
-    padding 0.45s ease,
+    opacity 0.35s ease,
+    max-height 0.45s var(--ease-in),
+    padding 0.45s var(--ease-in),
     border-color 0.45s ease;
-  max-height: 140px;
 }
 
 .task-item:last-child {
@@ -808,16 +893,84 @@ body::after {
   cursor: pointer;
 }
 
+/*
+ * Свои чекбоксы: системные на тёмном фоне читаются как серые квадраты.
+ * Крупная рамка и чёткая галочка — понятнее в дороге и при слабом зрении.
+ */
 .task-check input,
-.task-item--prepare > input {
-  width: 22px;
-  height: 22px;
-  accent-color: #ff6b82;
+.task-item--prepare > input,
+.check-item input {
+  appearance: none;
+  -webkit-appearance: none;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 2px solid rgba(232, 197, 71, 0.7);
+  background: rgba(15, 40, 71, 0.65);
+  cursor: pointer;
+  position: relative;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.18s var(--ease-out);
+}
+
+.task-check input::after,
+.task-item--prepare > input::after,
+.check-item input::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 2px;
+  width: 7px;
+  height: 13px;
+  border: solid var(--neva-deep);
+  border-width: 0 3px 3px 0;
+  transform: rotate(45deg) scale(0.4);
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.22s var(--ease-out);
+}
+
+.task-check input:checked,
+.task-item--prepare > input:checked,
+.check-item input:checked {
+  background: var(--gold-bright);
+  border-color: var(--gold-bright);
+}
+
+.task-check input:checked::after,
+.task-item--prepare > input:checked::after,
+.check-item input:checked::after {
+  opacity: 1;
+  transform: rotate(45deg) scale(1);
+}
+
+.task-check input:active,
+.task-item--prepare > input:active,
+.check-item input:active {
+  transform: scale(0.9);
+}
+
+.task-check input:focus-visible,
+.task-item--prepare > input:focus-visible,
+.check-item input:focus-visible {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 3px;
+}
+
+.task-check input,
+.task-item--urgent .task-check input {
+  border-color: rgba(255, 140, 155, 0.75);
+}
+
+.task-check input:checked {
+  background: #ff6b82;
+  border-color: #ff6b82;
 }
 
 .task-item--prepare > input {
   margin-top: 2px;
-  flex-shrink: 0;
 }
 
 .task-body {
@@ -829,7 +982,7 @@ body::after {
 }
 
 .task-title {
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--cream);
   line-height: 1.35;
@@ -840,7 +993,7 @@ body::after {
 }
 
 .task-detail {
-  font-size: 0.76rem;
+  font-size: 0.82rem;
   color: var(--muted);
   line-height: 1.4;
 }
@@ -875,51 +1028,18 @@ body::after {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .task-item {
-    transition: none;
-  }
-
-  .nav-btn--alert .nav-icon {
-    animation: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ticket-alert {
-    transition: none;
-  }
-}
-
 .btn-link:active {
   background: rgba(201, 162, 39, 0.2);
   border-color: var(--gold-bright);
 }
 
 #map {
-  height: min(58vh, 420px);
+  height: min(52vh, 400px);
   border-radius: 20px;
   overflow: hidden;
   border: 1px solid var(--glass-border);
   box-shadow: var(--card-shadow);
   z-index: 1;
-}
-
-.map-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.map-chip {
-  font-size: 0.7rem;
-  padding: 5px 11px;
-  border-radius: 999px;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  color: var(--label);
-  backdrop-filter: blur(8px);
 }
 
 .budget-row {
@@ -959,11 +1079,54 @@ body::after {
   z-index: 1;
 }
 
+.budget-total-lbl {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--white-night);
+}
+
 .budget-total-val {
+  margin-top: 6px;
   font-family: var(--font-display);
   font-size: 1.85rem;
   font-weight: 700;
   color: var(--gold-bright);
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.14);
+}
+
+.budget-compare:empty {
+  display: none;
+}
+
+.budget-compare-lbl {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.budget-compare-val {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-compare-val--over {
+  color: #ffb4c4;
+}
+
+.budget-compare-val--under {
+  color: #b8e8c8;
 }
 
 .ticket-card,
@@ -971,6 +1134,17 @@ body::after {
   padding: 16px 18px;
   position: relative;
   z-index: 1;
+}
+
+.ticket-price {
+  margin-top: 10px;
+  color: var(--gold-bright);
+  font-weight: 800;
+}
+
+.ticket-card .step-actions,
+.hotel-block .step-actions {
+  margin-top: 12px;
 }
 
 .ticket-card + .ticket-card {
@@ -1022,10 +1196,7 @@ body::after {
 }
 
 .check-item input {
-  width: 20px;
-  height: 20px;
-  margin-top: 2px;
-  accent-color: var(--gold);
+  margin-top: 1px;
 }
 
 .check-item.done .check-text {
@@ -1049,7 +1220,7 @@ body::after {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 0 18px 14px 50px;
+  padding: 0 18px 14px 56px;
   position: relative;
   z-index: 1;
 }
@@ -1070,6 +1241,8 @@ body::after {
 }
 
 .bottom-nav {
+  --nav-index: 0;
+  --nav-count: 5;
   position: fixed;
   left: 12px;
   right: 12px;
@@ -1086,27 +1259,44 @@ body::after {
   box-shadow: 0 12px 40px rgba(8, 20, 40, 0.55);
 }
 
+/* Золотая «пилюля» переезжает к активной вкладке — только transform, без layout. */
+.nav-indicator {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 6px;
+  width: calc((100% - 12px) / var(--nav-count));
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(201, 162, 39, 0.32), rgba(201, 162, 39, 0.16));
+  border: 1px solid rgba(232, 197, 71, 0.32);
+  box-shadow: 0 4px 14px rgba(201, 162, 39, 0.18);
+  transform: translate3d(calc(var(--nav-index) * 100%), 0, 0);
+  transition: transform 0.42s var(--ease-out);
+  pointer-events: none;
+}
+
 .nav-btn {
   appearance: none;
   border: none;
   background: transparent;
   color: var(--muted);
   font-family: inherit;
-  font-size: 0.62rem;
+  font-size: 0.72rem;
   font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  min-height: 44px;
+  min-height: 48px;
   padding: 6px 2px;
   border-radius: 14px;
+  position: relative;
+  z-index: 1;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+  transition: color 0.25s ease, transform 0.25s var(--ease-out);
 }
 
 .nav-btn:focus-visible {
@@ -1114,16 +1304,23 @@ body::after {
   outline-offset: 1px;
 }
 
+.nav-btn:active {
+  transform: scale(0.94);
+}
+
 .nav-btn.active {
   color: var(--cream);
-  background: rgba(201, 162, 39, 0.22);
-  transform: translateY(-2px);
+}
+
+.nav-btn.active .nav-icon {
+  transform: translateY(-1px) scale(1.08);
 }
 
 .nav-icon {
-  font-size: 1.15rem;
+  font-size: 1.25rem;
   line-height: 1;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+  transition: transform 0.35s var(--ease-out);
 }
 
 .tip-callout {
@@ -1144,14 +1341,64 @@ body::after {
 }
 
 .reveal {
+  --reveal-i: 0;
   opacity: 0;
   transform: translateY(16px);
-  transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1), transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  transition:
+    opacity 0.5s var(--ease-out) calc(var(--reveal-i) * 55ms),
+    transform 0.5s var(--ease-out) calc(var(--reveal-i) * 55ms);
 }
 
 .reveal.visible {
   opacity: 1;
   transform: translateY(0);
+}
+
+/* Уведомление об обновлении плана (service worker). */
+.update-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--nav-h) + var(--safe-bottom) + 18px);
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px 12px 18px;
+  border-radius: 18px;
+  background: rgba(15, 40, 71, 0.94);
+  border: 1px solid rgba(201, 162, 39, 0.5);
+  box-shadow: var(--card-shadow);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  transform: translate(-50%, 18px);
+  transition: opacity 0.35s var(--ease-out), transform 0.35s var(--ease-out);
+}
+
+.update-toast.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.update-toast-text {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--cream);
+  white-space: nowrap;
+}
+
+.update-toast-btn {
+  appearance: none;
+  border: 1px solid rgba(201, 162, 39, 0.6);
+  background: rgba(201, 162, 39, 0.22);
+  color: var(--gold-bright);
+  border-radius: 999px;
+  padding: 8px 16px;
+  min-height: 40px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
 }
 
 @keyframes heroIn {
@@ -1176,23 +1423,25 @@ body::after {
   }
 }
 
-@keyframes stepIn {
+@keyframes panelInRight {
   from {
     opacity: 0;
-    transform: translateX(-8px);
+    transform: translate3d(22px, 0, 0);
   }
   to {
     opacity: 1;
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+@keyframes panelInLeft {
+  from {
+    opacity: 0;
+    transform: translate3d(-22px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
   }
 }
 
@@ -1233,7 +1482,8 @@ body::after {
 }
 
 /* --- Анимация тура --- */
-.tour-map {
+/* Селектор с id: иначе правило проигрывает по специфичности `#map`. */
+#map.tour-map {
   height: min(46vh, 360px);
   margin-top: 12px;
 }
@@ -1278,12 +1528,17 @@ body::after {
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
+/* scaleX вместо width — не вызывает пересчёт layout на каждом кадре. */
 .tour-progress-bar {
+  --tour-progress: 0;
   height: 100%;
-  width: 0%;
+  width: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--neva-mist), var(--gold-bright));
-  transition: width 0.12s linear;
+  transform: scaleX(var(--tour-progress));
+  transform-origin: left center;
+  transition: transform 0.14s linear;
+  will-change: transform;
 }
 
 .tour-progress-text {
@@ -1325,9 +1580,16 @@ body::after {
 
 .tour-btn-primary {
   flex: 1;
-  background: linear-gradient(135deg, rgba(201, 162, 39, 0.45), rgba(42, 90, 138, 0.55));
-  border-color: rgba(201, 162, 39, 0.55);
+  background: linear-gradient(135deg, #e8c547 0%, #c9a227 100%);
+  border-color: rgba(250, 230, 150, 0.75);
+  color: var(--neva-deep);
+  font-size: 1.3rem;
   font-weight: 800;
+  box-shadow: 0 6px 18px rgba(201, 162, 39, 0.3);
+}
+
+.tour-btn-primary:active {
+  box-shadow: 0 3px 10px rgba(201, 162, 39, 0.25);
 }
 
 .map-status {
@@ -1360,8 +1622,8 @@ body::after {
     backdrop-filter: blur(16px) saturate(140%);
   }
 
-  .tour-map {
-    height: min(42vh, 320px);
+  #map.tour-map {
+    height: min(44vh, 300px);
   }
 }
 
@@ -1492,7 +1754,7 @@ body::after {
 }
 
 .tour-stop-text small {
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--muted);
 }
 
@@ -1511,7 +1773,7 @@ body::after {
   height: 56px;
   display: grid;
   place-items: center;
-  transform: rotate(var(--bearing, 0deg));
+  transform: rotate(var(--bearing, 0deg)) scaleY(var(--flip, 1));
   filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.45));
 }
 
@@ -1746,11 +2008,22 @@ body::after {
   }
 }
 
+/* Единый блок «меньше движения» — всё, что дёргается, выключается здесь. */
 @media (prefers-reduced-motion: reduce) {
-  .tour-marker-pulse {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 
+  html {
+    scroll-behavior: auto;
+  }
+
+  .tour-marker-pulse,
   .tour-vehicle--train,
   .tour-vehicle--car,
   .tour-vehicle--ferry,
@@ -1759,24 +2032,17 @@ body::after {
   .tour-smoke,
   .tour-car-dust,
   .tour-wave,
-  .tour-ferry-smoke {
-    animation: none;
-  }
-
-  .tour-progress-bar {
-    transition: none;
-  }
-
+  .tour-ferry-smoke,
   .tour-stop-active .tour-stop-num,
-  .tour-stop-active .tour-stop-transport {
-    animation: none;
+  .tour-stop-active .tour-stop-transport,
+  .todo-hub--alert,
+  .nav-btn--alert .nav-icon {
+    animation: none !important;
   }
 
-  .tour-stop {
-    transition: none;
-  }
-
-  .tour-stop-progress {
+  .reveal {
+    opacity: 1;
+    transform: none;
     transition: none;
   }
 
@@ -1793,125 +2059,6 @@ body::after {
   .spb-swipe-overlay.is-active {
     opacity: 1;
   }
-
-  .swipe-row,
-  .swipe-row__surface {
-    transition: none !important;
-  }
-}
-
-/* Свайп влево по пункту — удаление */
-.swipe-row {
-  position: relative;
-  overflow: hidden;
-  max-height: 900px;
-  transition:
-    opacity 0.42s ease,
-    max-height 0.42s ease,
-    margin 0.42s ease;
-}
-
-.swipe-row--hide {
-  opacity: 0;
-  max-height: 0 !important;
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
-  pointer-events: none;
-}
-
-.swipe-row--day {
-  margin-bottom: 14px;
-  border-radius: 20px;
-}
-
-.swipe-row--step + .swipe-row--step {
-  margin-top: 0;
-}
-
-.swipe-row--ticket + .swipe-row--ticket .ticket-card {
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.swipe-row__surface {
-  position: relative;
-  z-index: 1;
-  touch-action: pan-y;
-  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
-}
-
-.swipe-row.is-open .swipe-row__surface {
-  transform: translateX(calc(-1 * var(--swipe-delete-w)));
-}
-
-.swipe-row--task .swipe-row__surface,
-.swipe-row--visit .swipe-row__surface,
-.swipe-row--budget .swipe-row__surface {
-  background: rgba(12, 28, 50, 0.98);
-}
-
-.swipe-row--step .swipe-row__surface {
-  background: rgba(12, 28, 50, 0.96);
-}
-
-.swipe-row--day .swipe-row__surface {
-  border-radius: 20px;
-  overflow: hidden;
-}
-
-.swipe-row--day .day-card {
-  margin-bottom: 0;
-}
-
-.swipe-row--ticket .swipe-row__surface,
-.swipe-row--hotel .swipe-row__surface {
-  background: rgba(12, 28, 50, 0.98);
-}
-
-.swipe-row--visit .visit-item {
-  border-bottom: none;
-}
-
-.swipe-row--budget .budget-row {
-  border-bottom: none;
-}
-
-.swipe-row--task .task-item {
-  border-bottom: none;
-}
-
-.swipe-row__delete {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: var(--swipe-delete-w);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 8px;
-  border: none;
-  background: linear-gradient(180deg, #e8485c 0%, #b82034 100%);
-  color: #fff;
-  font-family: var(--font-body);
-  font-size: 0.66rem;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  line-height: 1.2;
-  text-align: center;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.swipe-row__delete:active {
-  background: linear-gradient(180deg, #ff5a6e 0%, #c4283c 100%);
-}
-
-.todo-summary-delete {
-  color: #ff6b82;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 /* Свайп с правого края — переход в стиле Петербурга */
