@@ -279,36 +279,15 @@ function keepRevealed(root, alreadyRendered) {
   root.querySelectorAll(".reveal").forEach((el) => el.classList.add("visible"));
 }
 
+/**
+ * Хаб — только цифры поездки. Напоминание о делах живёт в карточке
+ * «Сейчас» (до поездки) и в пульсирующей «!» на вкладке «Дела» —
+ * третий баннер о том же самом был шумом.
+ */
 function renderHub() {
   const total = displayBudget();
-  const doLeft = countPendingDo();
-  const prepLeft = countPendingPrepare();
-  const totalLeft = doLeft + prepLeft;
-  const subParts = [];
-  if (doLeft) subParts.push(`${doLeft} надо сделать`);
-  if (prepLeft) subParts.push(`${prepLeft} надо собрать`);
-  const todoBanner =
-    totalLeft > 0
-      ? `
-    <button type="button" class="todo-hub todo-hub--alert card card-glass reveal" id="todo-hub-btn" aria-label="Открыть список дел: осталось ${totalLeft}">
-      <div class="todo-hub-head">
-        <span class="todo-hub-badge" aria-hidden="true">${totalLeft}</span>
-        <div class="todo-hub-copy">
-          <span class="todo-hub-title">Осталось ${totalLeft} ${pluralRu(totalLeft, "дело", "дела", "дел")}</span>
-          <span class="todo-hub-sub">${subParts.join(" · ")}</span>
-        </div>
-        <span class="todo-hub-go" aria-hidden="true">!</span>
-      </div>
-      <span class="todo-hub-cta">Нажмите — список дел</span>
-    </button>`
-      : `
-    <div class="todo-hub card card-glass reveal todo-hub--done">
-      <span class="todo-hub-done">✓ Всё готово к поездке</span>
-    </div>`;
-
   const hub = document.getElementById("hub");
   hub.innerHTML = `
-    ${todoBanner}
     <div class="card card-glass reveal">
       <div class="hub-stats">
         <div class="stat">
@@ -329,11 +308,124 @@ function renderHub() {
 
   keepRevealed(hub, hubRendered);
   hubRendered = true;
-
-  document.getElementById("todo-hub-btn")?.addEventListener("click", () => {
-    document.querySelector('[data-nav="todo"]')?.click();
-  });
   updateTodoBadges();
+}
+
+/* ---------- Карточка «Сейчас»: гид сам понимает фазу поездки ---------- */
+
+function stepMinutes(step) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(step.time || "");
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+function findTodayIdx(todayIso) {
+  return TRIP.days.findIndex((d) => d.date === todayIso);
+}
+
+/** До поездки → countdown; в поездке → текущий/следующий шаг; после → итог. */
+function buildNowModel() {
+  const now = new Date();
+  const todayIso = now.toISOString().slice(0, 10);
+  const minutes = now.getHours() * 60 + now.getMinutes();
+
+  if (todayIso < TRIP.meta.start) {
+    const days = Math.round(
+      (new Date(TRIP.meta.start + "T00:00:00") - new Date(todayIso + "T00:00:00")) / 86400000,
+    );
+    return { mode: "before", days, pending: countPendingDo() + countPendingPrepare() };
+  }
+
+  if (todayIso > TRIP.meta.end) return { mode: "after" };
+
+  const dayIdx = findTodayIdx(todayIso);
+  if (dayIdx === -1) return { mode: "after" };
+
+  const day = TRIP.days[dayIdx];
+  const timed = day.steps
+    .map((step, i) => ({ step, i, min: stepMinutes(step) }))
+    .filter((x) => x.min != null);
+
+  let current = null;
+  let next = null;
+  for (const x of timed) {
+    if (x.min <= minutes) current = x;
+    else if (!next) next = x;
+  }
+  // До первого шага дня показываем первый шаг как «дальше».
+  if (!current && !next && timed.length) next = timed[0];
+
+  return { mode: "during", day, dayIdx, current, next };
+}
+
+function nowStepHtml(kindLabel, x, extraClass) {
+  const s = x.step;
+  return `
+    <div class="now-step ${extraClass || ""}">
+      <span class="now-step-kind">${kindLabel}</span>
+      <div class="now-step-main">
+        <span class="now-step-time">${esc(s.time || "—")}</span>
+        <span class="now-step-title">${esc(s.title)}</span>
+      </div>
+      ${s.address ? `<p class="now-step-addr">${esc(s.address)}</p>` : ""}
+      <div class="now-step-actions">
+        ${s.lat != null ? `<a class="btn-link" href="${yandexMap(s.lat, s.lon)}" target="_blank" rel="noopener">Карта</a>` : ""}
+        ${s.link ? `<a class="btn-link btn-link-urgent" href="${esc(s.link)}" target="_blank" rel="noopener">Билеты</a>` : ""}
+      </div>
+    </div>`;
+}
+
+let nowRendered = false;
+
+function renderNowCard() {
+  const el = document.getElementById("now-card");
+  if (!el) return;
+  const model = buildNowModel();
+
+  if (model.mode === "before") {
+    const d = model.days;
+    el.innerHTML = `
+      <div class="card card-glass reveal now-card now-card--before" id="now-card-inner" role="button" tabindex="0" aria-label="До поездки ${d} ${pluralRu(d, "день", "дня", "дней")}. Открыть список дел">
+        <div class="now-count">
+          <span class="now-count-num">${d}</span>
+          <span class="now-count-lbl">${pluralRu(d, "день до поездки", "дня до поездки", "дней до поездки")}</span>
+        </div>
+        <p class="now-sub">${
+          model.pending > 0
+            ? `Не готово: ${model.pending} ${pluralRu(model.pending, "пункт", "пункта", "пунктов")} — нажмите, откроем «Дела»`
+            : "Всё готово — осталось дождаться"
+        }</p>
+      </div>`;
+    el.querySelector("#now-card-inner")?.addEventListener("click", () => {
+      document.querySelector('[data-nav="todo"]')?.click();
+    });
+  } else if (model.mode === "during") {
+    el.innerHTML = `
+      <div class="card card-glass reveal now-card" id="now-card-inner" role="button" tabindex="0" aria-label="Открыть план на сегодня">
+        <div class="now-head">
+          <span class="now-day-label">${esc(model.day.label)}</span>
+          <span class="now-day-tag">сегодня</span>
+        </div>
+        ${model.current ? nowStepHtml("Сейчас", model.current, "now-step--current") : ""}
+        ${model.next ? nowStepHtml("Дальше", model.next, "") : ""}
+        ${!model.current && !model.next ? `<p class="now-sub">На сегодня всё — отдых.</p>` : ""}
+      </div>`;
+    el.querySelector("#now-card-inner")?.addEventListener("click", (e) => {
+      if (e.target.closest("a")) return;
+      const card = document.querySelectorAll("#plan-days .day-card")[model.dayIdx];
+      if (card) {
+        if (!card.open) card.querySelector("summary")?.click();
+        card.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
+      }
+    });
+  } else {
+    el.innerHTML = `
+      <div class="card card-glass reveal now-card now-card--after">
+        <p class="now-sub">Поездка завершена. Мама дома, фотографии — навсегда. ✓</p>
+      </div>`;
+  }
+
+  keepRevealed(el, nowRendered);
+  nowRendered = true;
 }
 
 let planRendered = false;
@@ -388,6 +480,11 @@ function renderPlan() {
         })
         .join("");
 
+      const dayCost = day.steps.reduce(
+        (s, st) => s + (typeof st.cost === "number" ? st.cost : 0),
+        0,
+      );
+
       return `
         <details class="card day-card reveal" data-day-id="${esc(day.id)}"${wasOpen ? " open" : ""}>
           <summary>
@@ -398,6 +495,7 @@ function renderPlan() {
             <div class="day-meta">
               <span class="day-label">${esc(day.label)}</span>
               <span class="day-summary">${esc(day.weekday)} · ${esc(day.summary)}</span>
+              ${dayCost > 0 ? `<span class="day-cost">≈ ${fmtMoney(dayCost)} · ${day.steps.length} ${pluralRu(day.steps.length, "пункт", "пункта", "пунктов")}</span>` : ""}
             </div>
           </summary>
           <div class="day-body">
@@ -600,6 +698,7 @@ function renderTodoPanel() {
 
 function refreshAfterTodoChange() {
   renderHub();
+  renderNowCard();
   renderTodoSummary();
   renderPlan();
   renderTicketsAndHotel();
@@ -1137,7 +1236,10 @@ function init() {
   document.body.dataset.panel = activePanel;
   renderHero();
   renderHub();
+  renderNowCard();
   renderPlan();
+  // Карточка «Сейчас» живёт по времени — обновляем раз в минуту.
+  setInterval(renderNowCard, 60000);
   renderTicketsAndHotel();
   renderBudget();
   renderTodoPanel();

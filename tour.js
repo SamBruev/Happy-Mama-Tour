@@ -62,7 +62,8 @@ function buildVehicleMarkerHtml(transport, headingEast) {
     return `
       <div class="tour-vehicle-shell" style="${style}">
         <div class="tour-vehicle tour-vehicle--car">
-          <span class="tour-car-dust"></span>
+          <span class="tour-car-dust tour-car-dust-1"></span>
+          <span class="tour-car-dust tour-car-dust-2"></span>
           <span class="tour-vehicle-icon" aria-hidden="true">🚗</span>
         </div>
       </div>`;
@@ -146,6 +147,10 @@ const TourAnimator = (function () {
       return 1 - 3.125 * u * u;
     }
     return 1.25 * t - 0.125;
+  }
+
+  function linear(t) {
+    return t < 0 ? 0 : t > 1 ? 1 : t;
   }
 
   function TourAnimatorInstance(map, route, legs) {
@@ -243,6 +248,8 @@ const TourAnimator = (function () {
     this.legProgress = 0;
     this.resumeProgress = 0;
     this.followZoom = null;
+    this.map.stop();
+    this.setTouring(false);
     this.traveledPoints = [[this.route[0].lat, this.route[0].lon]];
     this.livePoints = null;
     this.traveledLine.setLatLngs(this.traveledPoints);
@@ -266,14 +273,16 @@ const TourAnimator = (function () {
   };
 
   /**
-   * Камера работает в двух режимах и НИКОГДА не летит одновременно
-   * с движением маркера (одновременность давала прыжки на 15–25 px).
+   * Камера работает в двух режимах.
    *
-   * Короткий этап (< 80 км): показываем целиком и стоим на месте.
-   * Длинный этап: подлетаем к точке старта близко, а дальше камера
-   * жёстко прибита к транспорту — карта едет под ним (follow-cam).
-   * Именно это даёт ощущение «приближается»: раньше Москва → Петербург
-   * показывалась целиком с зума 4, где 630 км не двигаются никак.
+   * Короткий этап (< 80 км): показываем целиком, камера стоит на месте.
+   * Длинный этап: неторопливый подлёт к точке старта, а во время движения
+   * карту везёт цепочка ЛИНЕЙНЫХ панов (runFollowCamera). Один пан — одна
+   * композитная CSS-анимация панели: линии маршрута при этом не
+   * перепроецируются, поэтому пунктир соседних путей стоит как вкопанный.
+   * Прежний вариант — setView на каждом кадре — заставлял Leaflet заново
+   * строить все пути 60 раз в секунду с округлением до пикселя:
+   * отсюда и «дрожащий пунктир», и ступенчатое движение карты.
    */
   TourAnimatorInstance.prototype.frameLeg = function (from, to) {
     const km = haversineKm(from, to);
@@ -283,7 +292,10 @@ const TourAnimator = (function () {
       // Чем длиннее этап, тем дальше камера, но не дальше z7 и не ближе z10.
       this.followZoom = Math.max(7, Math.min(10, Math.round(11 - Math.log2(km / 40))));
       return this.flyAndSettle(() =>
-        this.map.flyTo([from.lat, from.lon], this.followZoom, { duration: 0.9 }),
+        this.map.flyTo([from.lat, from.lon], this.followZoom, {
+          duration: 1.3,
+          easeLinearity: 0.18,
+        }),
       );
     }
 
@@ -298,7 +310,10 @@ const TourAnimator = (function () {
       return Promise.resolve();
     }
     return this.flyAndSettle(() =>
-      this.map.flyToBounds(bounds, Object.assign({ duration: 0.7 }, opts)),
+      this.map.flyToBounds(
+        bounds,
+        Object.assign({ duration: 1.15, easeLinearity: 0.18 }, opts),
+      ),
     );
   };
 
@@ -310,12 +325,54 @@ const TourAnimator = (function () {
         if (settled) return;
         settled = true;
         this.map.off("moveend", finish);
-        resolve();
+        // Короткая пауза после посадки — перелёт не «врезается» в движение.
+        setTimeout(resolve, 160);
       };
       this.map.on("moveend", finish);
       fly();
-      setTimeout(finish, 1600);
+      setTimeout(finish, 2100);
     });
+  };
+
+  /**
+   * Follow-cam без покадрового setView: карту везём цепочкой равных
+   * линейных панов (~0.9 с каждый). Скорость на стыках непрерывна,
+   * тайлы догружаются на каждом moveend, а маркер и панель карты
+   * анимируются каждый своим слоем — конфликтов нет.
+   */
+  TourAnimatorInstance.prototype.runFollowCamera = async function (to, endsAt) {
+    const map = this.map;
+    const zoom = this.followZoom;
+    const STEP_MS = 900;
+
+    while (!this.cancelled && this.followZoom != null) {
+      const remain = endsAt - performance.now();
+      if (remain <= 60) break;
+
+      const step = Math.min(STEP_MS, remain);
+      const centerPx = map.project(map.getCenter(), zoom);
+      const targetPx = map.project([to.lat, to.lon], zoom);
+      const nextPx = centerPx.add(targetPx.subtract(centerPx).multiplyBy(step / remain));
+      const next = map.unproject(nextPx, zoom);
+
+      await new Promise((resolve) => {
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          map.off("moveend", finish);
+          resolve();
+        };
+        map.on("moveend", finish);
+        map.panTo(next, {
+          animate: true,
+          duration: step / 1000,
+          easeLinearity: 1, // строго линейно — стыки панов не видны
+          noMoveStart: true,
+        });
+        setTimeout(finish, step + 300);
+      });
+    }
   };
 
   TourAnimatorInstance.prototype.animateLeg = async function (leg, legIdx, startProgress) {
@@ -347,6 +404,14 @@ const TourAnimator = (function () {
     const start = performance.now() - offset * duration;
     let lastUiAt = 0;
 
+    // На follow-этапах маркер движется линейно — в темпе камеры,
+    // иначе транспорт плавал бы по экрану вперёд-назад.
+    const ease = this.followZoom != null ? linear : easeTravel;
+
+    if (this.followZoom != null) {
+      this.runFollowCamera(to, start + duration);
+    }
+
     return new Promise((resolve) => {
       const tick = (now) => {
         if (this.cancelled) {
@@ -354,18 +419,12 @@ const TourAnimator = (function () {
           return;
         }
         const raw = Math.min(1, (now - start) / duration);
-        const t = easeTravel(raw);
+        const t = ease(raw);
         const lat = lerp(from.lat, to.lat, t);
         const lon = lerp(from.lon, to.lon, t);
 
         this.legProgress = raw;
         this.marker.setLatLng([lat, lon]);
-
-        // Follow-cam: карта движется под транспортом. animate:false — мгновенный
-        // сдвиг панели в том же кадре, никакой гонки двух анимаций.
-        if (this.followZoom != null) {
-          this.map.setView([lat, lon], this.followZoom, { animate: false });
-        }
 
         const head = this.livePoints[this.livePoints.length - 1];
         head[0] = lat;
@@ -387,6 +446,7 @@ const TourAnimator = (function () {
           this.traveledLine.setLatLngs(this.traveledPoints);
           this.marker.setLatLng([to.lat, to.lon]);
           this.legProgress = 1;
+          this.followZoom = null; // останавливает цепочку панов
           resolve();
         }
       };
@@ -394,10 +454,16 @@ const TourAnimator = (function () {
     });
   };
 
+  /** Транспорт «едет» (качается, дымит) только пока тур реально идёт. */
+  TourAnimatorInstance.prototype.setTouring = function (on) {
+    this.map.getContainer().classList.toggle("touring", !!on);
+  };
+
   TourAnimatorInstance.prototype.play = async function () {
     if (this.playing) return;
     this.playing = true;
     this.cancelled = false;
+    this.setTouring(true);
 
     if (this.legIndex >= this.legs.length) {
       this.legIndex = 0;
@@ -419,13 +485,15 @@ const TourAnimator = (function () {
     }
 
     this.playing = false;
+    this.setTouring(false);
 
     if (!this.cancelled && this.legIndex >= this.legs.length - 1) {
       this.legIndex = this.legs.length;
       this.map.flyToBounds(this.overviewBounds, {
         padding: [36, 36],
         maxZoom: 7,
-        duration: prefersReducedMotion() ? 0 : 1.1,
+        duration: prefersReducedMotion() ? 0 : 1.4,
+        easeLinearity: 0.18,
       });
       this.emitUpdate({
         legIndex: this.legs.length - 1,
@@ -446,6 +514,8 @@ const TourAnimator = (function () {
     this.cancelled = true;
     this.playing = false;
     this.followZoom = null;
+    this.map.stop(); // мягко останавливаем текущий пан/перелёт камеры
+    this.setTouring(false);
     this.resumeProgress = this.legProgress < 1 ? this.legProgress : 0;
     if (wasPlaying) this.emitUpdate({ playing: false, paused: true });
   };
