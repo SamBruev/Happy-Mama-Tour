@@ -1780,12 +1780,13 @@ body:not([data-panel="plan"]) #hub {
   border: none !important;
 }
 
+/* Без поворотов: только горизонтальное зеркало для боковых видов (езда на восток). */
 .tour-vehicle-shell {
   width: 56px;
   height: 56px;
   display: grid;
   place-items: center;
-  transform: rotate(var(--bearing, 0deg)) scaleY(var(--flip, 1));
+  transform: scaleX(var(--flipx, 1));
 }
 
 .tour-vehicle {
@@ -1859,10 +1860,11 @@ body:not([data-panel="plan"]) #hub {
   animation: carDrive 0.32s ease-in-out infinite;
 }
 
+/* Пыль позади машины. Эмодзи смотрит влево → «зад» справа; при зеркале уедет сама. */
 .tour-car-dust {
   position: absolute;
-  left: -6px;
-  bottom: 8px;
+  right: -4px;
+  bottom: 7px;
   width: 10px;
   height: 4px;
   border-radius: 50%;
@@ -1886,7 +1888,7 @@ body:not([data-panel="plan"]) #hub {
     opacity: 0.6;
   }
   100% {
-    transform: translateX(-12px) scale(1.2);
+    transform: translateX(12px) scale(1.2);
     opacity: 0;
   }
 }

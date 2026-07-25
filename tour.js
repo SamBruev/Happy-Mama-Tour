@@ -26,37 +26,24 @@ function getVehicleKind(transport) {
   return "default";
 }
 
-function getBearing(fromLat, fromLon, toLat, toLon) {
-  const φ1 = (fromLat * Math.PI) / 180;
-  const φ2 = (toLat * Math.PI) / 180;
-  const Δλ = ((toLon - fromLon) * Math.PI) / 180;
-  const y = Math.sin(Δλ) * Math.cos(φ2);
-  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-}
-
 /**
- * Эмодзи смотрят вправо, поэтому поворачиваем на (курс − 90°).
- * На западных курсах картинка встаёт вверх ногами — отражаем её по вертикали
- * уже в повёрнутой системе координат. Угол при этом менять нельзя:
- * из-за прежнего `angle ± 180` транспорт ехал ровно в обратную сторону.
+ * Эмодзи НЕ вращаем. Это не спрайты «вид сверху»: у Apple/Noto
+ * 🚆 и 🚇 нарисованы анфас, 🚗 ⛴ 🚶 — сбоку и смотрят ВЛЕВО.
+ * Любой поворот по курсу укладывает такую картинку на бок.
+ * Транспорт всегда стоит вертикально; боковым видам только зеркалим
+ * горизонталь, когда едем на восток. Направление движения и так
+ * показывают золотая линия и сама карта.
  */
-function getVehicleDisplayAngle(bearing) {
-  let angle = bearing - 90;
-  while (angle <= -180) angle += 360;
-  while (angle > 180) angle -= 360;
-  return { deg: angle, flip: Math.abs(angle) > 90 };
+const SIDE_VIEW_KINDS = new Set(["car", "ferry", "walk"]);
+
+function vehicleShellStyle(kind, headingEast) {
+  const mirror = SIDE_VIEW_KINDS.has(kind) && headingEast;
+  return `--flipx:${mirror ? -1 : 1}`;
 }
 
-function vehicleShellStyle(bearing) {
-  const b = typeof bearing === "number" ? bearing : 0;
-  const { deg, flip } = getVehicleDisplayAngle(b);
-  return `--bearing:${deg}deg;--flip:${flip ? -1 : 1}`;
-}
-
-function buildVehicleMarkerHtml(transport, bearing) {
+function buildVehicleMarkerHtml(transport, headingEast) {
   const kind = getVehicleKind(transport);
-  const style = vehicleShellStyle(bearing);
+  const style = vehicleShellStyle(kind, headingEast);
   const icon = TRANSPORT_ICON[transport] || "📍";
 
   if (kind === "train") {
@@ -120,14 +107,24 @@ function buildVehicleMarkerHtml(transport, bearing) {
     </div>`;
 }
 
-function createVehicleIcon(transport, bearing) {
+function createVehicleIcon(transport, headingEast) {
   const size = 56;
   return L.divIcon({
     className: "tour-marker-wrap",
-    html: buildVehicleMarkerHtml(transport, bearing),
+    html: buildVehicleMarkerHtml(transport, headingEast),
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   });
+}
+
+function haversineKm(a, b) {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLon = ((b.lon - a.lon) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
 }
 
 const TourAnimator = (function () {
@@ -167,6 +164,7 @@ const TourAnimator = (function () {
     this.livePoints = null;
     this.onUpdate = null;
     this.currentTransport = null;
+    this.followZoom = null;
 
     /** Состояние копится здесь, поэтому частичные emitUpdate не ломают UI. */
     this.state = {
@@ -228,9 +226,9 @@ const TourAnimator = (function () {
   };
 
   TourAnimatorInstance.prototype.setVehicle = function (transport, from, to) {
-    const bearing = from && to ? getBearing(from.lat, from.lon, to.lat, to.lon) : 0;
+    const headingEast = !!(from && to && to.lon > from.lon);
     this.currentTransport = transport;
-    this.marker.setIcon(createVehicleIcon(transport, bearing));
+    this.marker.setIcon(createVehicleIcon(transport, headingEast));
   };
 
   TourAnimatorInstance.prototype.emitUpdate = function (payload) {
@@ -244,6 +242,7 @@ const TourAnimator = (function () {
     this.legIndex = 0;
     this.legProgress = 0;
     this.resumeProgress = 0;
+    this.followZoom = null;
     this.traveledPoints = [[this.route[0].lat, this.route[0].lon]];
     this.livePoints = null;
     this.traveledLine.setLatLngs(this.traveledPoints);
@@ -267,23 +266,44 @@ const TourAnimator = (function () {
   };
 
   /**
-   * Камера охватывает весь этап и делает это ДО начала движения.
-   * Раньше flyToBounds шёл одновременно с setLatLng маркера: Leaflet двигал
-   * панель карты, а мы в тех же кадрах ставили абсолютные координаты —
-   * маркер прыгал на 15–25 px. Теперь возвращаем промис и ждём посадки камеры.
+   * Камера работает в двух режимах и НИКОГДА не летит одновременно
+   * с движением маркера (одновременность давала прыжки на 15–25 px).
+   *
+   * Короткий этап (< 80 км): показываем целиком и стоим на месте.
+   * Длинный этап: подлетаем к точке старта близко, а дальше камера
+   * жёстко прибита к транспорту — карта едет под ним (follow-cam).
+   * Именно это даёт ощущение «приближается»: раньше Москва → Петербург
+   * показывалась целиком с зума 4, где 630 км не двигаются никак.
    */
   TourAnimatorInstance.prototype.frameLeg = function (from, to) {
+    const km = haversineKm(from, to);
+    this.followZoom = null;
+
+    if (km > 80 && !prefersReducedMotion()) {
+      // Чем длиннее этап, тем дальше камера, но не дальше z7 и не ближе z10.
+      this.followZoom = Math.max(7, Math.min(10, Math.round(11 - Math.log2(km / 40))));
+      return this.flyAndSettle(() =>
+        this.map.flyTo([from.lat, from.lon], this.followZoom, { duration: 0.9 }),
+      );
+    }
+
     const bounds = L.latLngBounds([
       [from.lat, from.lon],
       [to.lat, to.lon],
-    ]).pad(0.35);
-    const opts = { padding: [26, 26], maxZoom: 12 };
+    ]).pad(0.3);
+    const opts = { padding: [30, 30], maxZoom: 13 };
 
     if (prefersReducedMotion()) {
       this.map.fitBounds(bounds, Object.assign({ animate: false }, opts));
       return Promise.resolve();
     }
+    return this.flyAndSettle(() =>
+      this.map.flyToBounds(bounds, Object.assign({ duration: 0.7 }, opts)),
+    );
+  };
 
+  /** Ждём посадки камеры; страховка по таймеру, чтобы тур не завис. */
+  TourAnimatorInstance.prototype.flyAndSettle = function (fly) {
     return new Promise((resolve) => {
       let settled = false;
       const finish = () => {
@@ -293,9 +313,8 @@ const TourAnimator = (function () {
         resolve();
       };
       this.map.on("moveend", finish);
-      this.map.flyToBounds(bounds, Object.assign({ duration: 0.7 }, opts));
-      // Страховка: если moveend не придёт, тур не должен встать.
-      setTimeout(finish, 1500);
+      fly();
+      setTimeout(finish, 1600);
     });
   };
 
@@ -341,6 +360,12 @@ const TourAnimator = (function () {
 
         this.legProgress = raw;
         this.marker.setLatLng([lat, lon]);
+
+        // Follow-cam: карта движется под транспортом. animate:false — мгновенный
+        // сдвиг панели в том же кадре, никакой гонки двух анимаций.
+        if (this.followZoom != null) {
+          this.map.setView([lat, lon], this.followZoom, { animate: false });
+        }
 
         const head = this.livePoints[this.livePoints.length - 1];
         head[0] = lat;
@@ -420,6 +445,7 @@ const TourAnimator = (function () {
     const wasPlaying = this.playing;
     this.cancelled = true;
     this.playing = false;
+    this.followZoom = null;
     this.resumeProgress = this.legProgress < 1 ? this.legProgress : 0;
     if (wasPlaying) this.emitUpdate({ playing: false, paused: true });
   };

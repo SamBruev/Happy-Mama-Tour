@@ -4,7 +4,7 @@
  * поэтому правки в data.js доходят до телефона со следующего открытия,
  * а не «никогда», как при чистом cache-first.
  */
-const VERSION = "v3";
+const VERSION = "v4";
 const CACHE = `happy-mama-${VERSION}`;
 
 const CORE = [
@@ -22,6 +22,9 @@ const CORE = [
 ];
 
 self.addEventListener("install", (event) => {
+  // Активируемся сразу: у старого воркера v1 был вечный cache-first,
+  // и без skipWaiting телефоны, где сайт уже открывали, обновлений не увидят.
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE).then((cache) =>
       // Один недоступный файл не должен ронять всю установку.
