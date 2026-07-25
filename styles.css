@@ -1488,6 +1488,18 @@ body:not([data-panel="plan"]) #hub {
   margin-top: 12px;
 }
 
+/*
+ * Внутри плеера и списка остановок контент меняется по 10 раз в секунду.
+ * С backdrop-filter iOS Safari пересчитывает блюр на каждое такое изменение —
+ * это и давало рывки во время тура. Плотный фон обходится без пересчёта.
+ */
+.tour-player,
+.tour-stops {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: linear-gradient(180deg, rgba(26, 61, 102, 0.9) 0%, rgba(15, 40, 71, 0.93) 100%);
+}
+
 .tour-player {
   padding: 16px 18px;
   position: relative;
@@ -1774,7 +1786,6 @@ body:not([data-panel="plan"]) #hub {
   display: grid;
   place-items: center;
   transform: rotate(var(--bearing, 0deg)) scaleY(var(--flip, 1));
-  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.45));
 }
 
 .tour-vehicle {
@@ -1785,11 +1796,13 @@ body:not([data-panel="plan"]) #hub {
   height: 44px;
 }
 
+/* text-shadow вместо filter: drop-shadow — фильтр перерисовывал слой на каждом кадре. */
 .tour-vehicle-icon {
   font-size: 1.65rem;
   line-height: 1;
   position: relative;
   z-index: 2;
+  text-shadow: 0 3px 7px rgba(0, 0, 0, 0.55);
 }
 
 /* --- Поезд + дым --- */

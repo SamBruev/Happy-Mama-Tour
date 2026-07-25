@@ -35,14 +35,17 @@ function getBearing(fromLat, fromLon, toLat, toLon) {
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
-/** Эмодзи смотрят вправо; не даём им оказаться вверх ногами на западных курсах. */
+/**
+ * Эмодзи смотрят вправо, поэтому поворачиваем на (курс − 90°).
+ * На западных курсах картинка встаёт вверх ногами — отражаем её по вертикали
+ * уже в повёрнутой системе координат. Угол при этом менять нельзя:
+ * из-за прежнего `angle ± 180` транспорт ехал ровно в обратную сторону.
+ */
 function getVehicleDisplayAngle(bearing) {
   let angle = bearing - 90;
   while (angle <= -180) angle += 360;
   while (angle > 180) angle -= 360;
-  if (angle > 90) return { deg: angle - 180, flip: true };
-  if (angle < -90) return { deg: angle + 180, flip: true };
-  return { deg: angle, flip: false };
+  return { deg: angle, flip: Math.abs(angle) > 90 };
 }
 
 function vehicleShellStyle(bearing) {
@@ -132,8 +135,20 @@ const TourAnimator = (function () {
     return a + (b - a) * t;
   }
 
-  function easeInOut(t) {
-    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  /**
+   * Кубический ease-in-out почти останавливал транспорт в начале и в конце
+   * каждого этапа — со стороны это читалось как рывки. Здесь плавный разгон
+   * и торможение занимают по 20 % пути, остальные 60 % — равномерный ход.
+   */
+  function easeTravel(t) {
+    if (t <= 0) return 0;
+    if (t >= 1) return 1;
+    if (t < 0.2) return 3.125 * t * t;
+    if (t > 0.8) {
+      const u = 1 - t;
+      return 1 - 3.125 * u * u;
+    }
+    return 1.25 * t - 0.125;
   }
 
   function TourAnimatorInstance(map, route, legs) {
@@ -251,35 +266,48 @@ const TourAnimator = (function () {
     });
   };
 
-  /** Камера один раз охватывает этап — вместо дёрганого panTo на каждом кадре. */
+  /**
+   * Камера охватывает весь этап и делает это ДО начала движения.
+   * Раньше flyToBounds шёл одновременно с setLatLng маркера: Leaflet двигал
+   * панель карты, а мы в тех же кадрах ставили абсолютные координаты —
+   * маркер прыгал на 15–25 px. Теперь возвращаем промис и ждём посадки камеры.
+   */
   TourAnimatorInstance.prototype.frameLeg = function (from, to) {
     const bounds = L.latLngBounds([
       [from.lat, from.lon],
       [to.lat, to.lon],
-    ]).pad(0.4);
-    const opts = { padding: [34, 34], maxZoom: 10 };
+    ]).pad(0.35);
+    const opts = { padding: [26, 26], maxZoom: 12 };
+
     if (prefersReducedMotion()) {
       this.map.fitBounds(bounds, Object.assign({ animate: false }, opts));
-    } else {
-      this.map.flyToBounds(bounds, Object.assign({ duration: 0.8 }, opts));
+      return Promise.resolve();
     }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        this.map.off("moveend", finish);
+        resolve();
+      };
+      this.map.on("moveend", finish);
+      this.map.flyToBounds(bounds, Object.assign({ duration: 0.7 }, opts));
+      // Страховка: если moveend не придёт, тур не должен встать.
+      setTimeout(finish, 1500);
+    });
   };
 
-  TourAnimatorInstance.prototype.animateLeg = function (leg, legIdx, startProgress) {
+  TourAnimatorInstance.prototype.animateLeg = async function (leg, legIdx, startProgress) {
     const from = this.route[leg.from];
     const to = this.route[leg.to];
     const duration = leg.durationMs || 3000;
     const offset = Math.min(0.98, Math.max(0, startProgress || 0));
-    const start = performance.now() - offset * duration;
-    const reduceMotion = prefersReducedMotion();
-    let lastPanAt = 0;
 
     this.setVehicle(leg.transport, from, to);
-    this.frameLeg(from, to);
 
-    this.livePoints = this.traveledPoints.slice();
-    this.livePoints.push([from.lat, from.lon]);
-
+    // Сначала подписи — видно, куда поедем, пока камера подлетает.
     this.emitUpdate({
       legIndex: legIdx,
       progress: offset,
@@ -291,6 +319,15 @@ const TourAnimator = (function () {
       done: false,
     });
 
+    await this.frameLeg(from, to);
+    if (this.cancelled) return;
+
+    this.livePoints = this.traveledPoints.slice();
+    this.livePoints.push([from.lat, from.lon]);
+
+    const start = performance.now() - offset * duration;
+    let lastUiAt = 0;
+
     return new Promise((resolve) => {
       const tick = (now) => {
         if (this.cancelled) {
@@ -298,7 +335,7 @@ const TourAnimator = (function () {
           return;
         }
         const raw = Math.min(1, (now - start) / duration);
-        const t = easeInOut(raw);
+        const t = easeTravel(raw);
         const lat = lerp(from.lat, to.lat, t);
         const lon = lerp(from.lon, to.lon, t);
 
@@ -310,26 +347,12 @@ const TourAnimator = (function () {
         head[1] = lon;
         this.traveledLine.setLatLngs(this.livePoints);
 
-        // Догоняем машинку, только если она подошла к краю карты.
-        if (!reduceMotion && now - start > 900 && now - lastPanAt > 700) {
-          const size = this.map.getSize();
-          const pt = this.map.latLngToContainerPoint([lat, lon]);
-          const mx = size.x * 0.22;
-          const my = size.y * 0.22;
-          if (pt.x < mx || pt.x > size.x - mx || pt.y < my || pt.y > size.y - my) {
-            this.map.panTo([lat, lon], { animate: true, duration: 0.7 });
-            lastPanAt = now;
-          }
+        // Список остановок и прогресс — 10 раз в секунду, а не 60:
+        // перебор 14 элементов с getBoundingClientRect каждый кадр давал джанк.
+        if (now - lastUiAt > 95 || raw >= 1) {
+          lastUiAt = now;
+          this.emitUpdate({ legIndex: legIdx, progress: raw, playing: true });
         }
-
-        this.emitUpdate({
-          legIndex: legIdx,
-          progress: raw,
-          stop: to,
-          label: leg.label,
-          transport: leg.transport,
-          playing: true,
-        });
 
         if (raw < 1) {
           requestAnimationFrame(tick);
@@ -367,7 +390,7 @@ const TourAnimator = (function () {
       this.legIndex = i;
       await this.animateLeg(this.legs[i], i, i === startIndex ? startFrom : 0);
       if (this.cancelled) break;
-      await new Promise((r) => setTimeout(r, 420));
+      await new Promise((r) => setTimeout(r, 260));
     }
 
     this.playing = false;
@@ -429,16 +452,18 @@ const tourStopsScroll = { lastIdx: -1, lastAt: 0 };
 function scrollTourStopIntoView(container, el, idx) {
   if (!container || !el) return;
   const now = performance.now();
-  if (idx === tourStopsScroll.lastIdx && now - tourStopsScroll.lastAt < 400) return;
+  if (idx === tourStopsScroll.lastIdx && now - tourStopsScroll.lastAt < 500) return;
+
+  // Отметку времени ставим до измерений: иначе при малом смещении функция
+  // выходила раньше записи и дёргала getBoundingClientRect на каждом кадре.
+  tourStopsScroll.lastIdx = idx;
+  tourStopsScroll.lastAt = now;
 
   const containerRect = container.getBoundingClientRect();
   const elRect = el.getBoundingClientRect();
   const offset = elRect.top - containerRect.top - containerRect.height / 2 + elRect.height / 2;
 
   if (Math.abs(offset) < 16) return;
-
-  tourStopsScroll.lastIdx = idx;
-  tourStopsScroll.lastAt = now;
 
   container.scrollTo({
     top: container.scrollTop + offset,
@@ -461,7 +486,14 @@ function updateTourStops(container, legs, activeIdx, legProgress, legIndex, play
     el.classList.toggle("tour-stop-active", isActive);
     el.classList.toggle("tour-stop-done", isDone && !isActive);
     el.classList.toggle("tour-stop-pending", !isDone && !isActive);
-    el.style.setProperty("--leg-progress", isActive ? String(legProgress) : isDone ? "1" : "0");
+
+    // Пишем переменную только когда значение реально изменилось:
+    // запись во все 14 элементов подряд заставляла браузер пересчитывать стили.
+    const next = isActive ? (Math.round(legProgress * 100) / 100).toFixed(2) : isDone ? "1" : "0";
+    if (el.dataset.p !== next) {
+      el.dataset.p = next;
+      el.style.setProperty("--leg-progress", next);
+    }
 
     if (isActive) {
       scrollTarget = el;
